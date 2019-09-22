@@ -10,22 +10,50 @@ import models
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 import t3nsor as t3
+import easydict as edict
+import time
+
+settings = edict.EasyDict({
+   "GPU": False,
+   "EPOCHS":90,
+   "CLIP_GRAD":3,
+   "LR": 0.1,
+   "BATCH_SIZE": 128,
+})
+
+if settings.GPU:
+    device = torch.device('cuda')
+else:
+    device = torch.device('cpu')
+
 
 def train(args,model,device,train_loader,optimizer,epoch):
+
+    #switch to train mode
     model.train()
+    # def adjust_learning_rate(optimizer, epoch):
+    #     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
+    #     lr = settings.LR * (0.1 ** (epoch // (settings.EPOCHS // 3)))
+    #     for param_group in optimizer.param_groups:
+    #         param_group['lr'] = lr
     for batch_idx,(data,target) in enumerate(train_loader):
-        cuda0 = torch.device('cuda:0')
+
         data,target = data.to(device=device), target.to(device=device)
         #print('data,target:',data,target)
         optimizer.zero_grad()
         output = model(data)
-        if args.cuda:
+        if settings.GPU :
             criterion = nn.CrossEntropyLoss().cuda()
         else:
             criterion = nn.CrossEntropyLoss()
         loss = criterion(output,target)
         #loss = F.nll_loss(output,target)
         loss.backward()
+
+        #gradient clipping
+        clip_value = settings.CLIP_GRAD
+        nn.utils.clip_grad_norm(model.parameters(),clip_value)
+
         optimizer.step()
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
@@ -93,10 +121,10 @@ def main():
     parser.add_argument('--penalty', action='store', default=0.0,
             help='beta penalty')
     args = parser.parse_args()
-    args.cuda = not args.no_cuda and torch.cuda.is_available()
-    device = torch.device("cuda" if args.cuda else "cpu")
+    gpu_avi = not args.no_cuda and settings.GPU and torch.cuda.is_available()
+    device = torch.device("cuda" if gpu_avi else "cpu")
 
-    kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
+    kwargs = {'num_workers': 1, 'pin_memory': True} if gpu_avi else {}
     train_loader = torch.utils.data.DataLoader(
             datasets.MNIST('data', train=True, download=True,
                 transform=transforms.Compose([
@@ -114,23 +142,25 @@ def main():
     #generate the model
     #model = models.Dense_Net()
     #model = models.P_TT_Net()
-    model = models.OptNet()
+    model = models.Dense_Net()
 
     best_acc = 0.0
-    if args.cuda:
-        #model = nn.DataParallel(model).cuda()
-        model = model.to(device)
+    print('device:',device)
+    model = model.to(device)
 
     print(model)
     print("para:", model.parameters())
-    base_lr = 0.1
 
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum,
+    optimizer = optim.SGD(model.parameters(), lr=settings.LR, momentum=args.momentum,
             weight_decay=1e-4)
 
-    for epoch in range(1, args.epochs + 1):
+    #lr decay by 10 times for every 30 epoch
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
+
+    for epoch in range(1, settings.EPOCHS + 1):
         train(args, model, device, train_loader, optimizer, epoch)
         test(args, model, device, test_loader)
+        scheduler.step()
 
 if __name__== '__main__':
     main()
