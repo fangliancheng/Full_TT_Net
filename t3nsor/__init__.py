@@ -4,6 +4,7 @@ from t3nsor.initializers import tensor_ones
 from t3nsor.initializers import tensor_zeros
 from t3nsor.initializers import random_matrix
 from t3nsor.initializers import matrix_with_random_cores
+from t3nsor.initializers import tensor_with_random_cores
 from t3nsor.decompositions import to_tt_tensor
 from t3nsor.decompositions import to_tt_matrix
 from t3nsor.decompositions import round_tt
@@ -14,8 +15,9 @@ from t3nsor.ops import transpose
 from t3nsor.ops import multiply
 from t3nsor.ops import add
 from t3nsor.utils import ind2sub
-from t3nsor.layers import TTEmbedding
+from t3nsor.layers import TTConv
 from t3nsor.layers import TTLinear
-from t3nsor.layers import Solver
+from t3nsor.layers import TTSolver
+from t3nsor.layers import TTFC
 from t3nsor.initializers import matrix_zeros
 from t3nsor.initializers import glorot_initializer

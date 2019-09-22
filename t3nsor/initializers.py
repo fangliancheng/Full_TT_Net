@@ -66,6 +66,45 @@ def _validate_input_parameters(is_tensor, shape, **params):
                                  '1 or %d, got %d' % (shape[0].size + 1, tt_rank.size))
 
 
+
+def tensor_with_random_cores(shape, tt_rank=2, mean=0., stddev=1.,dtype=torch.float32):
+    """Generate a TT-tensor of the given shape with N(mean, stddev^2) cores.
+    Args:
+      shape: array representing the shape of the future tensor.
+      tt_rank: a number or a (d+1)-element array with the desired ranks.
+      mean: a number, the mean of the normal distribution used for
+        initializing TT-cores.
+      stddev: a number, the standard deviation of the normal distribution used
+        for initializing TT-cores.
+      dtype: [tf.float32] dtype of the resulting tensor.
+      name: string, name of the Op.
+    Returns:
+      TensorTrain containing a TT-tensor
+    """
+    # TODO: good distribution to init training.
+    # TODO: support shape and tt_ranks as TensorShape?.
+    # TODO: support None as a dimension.
+    shape = np.array(shape)
+    tt_rank = np.array(tt_rank)
+    _validate_input_parameters(is_tensor=True, shape=shape, tt_rank=tt_rank)
+    num_dims = shape.size
+    if tt_rank.size == 1:
+        tt_rank = tt_rank * np.ones(num_dims - 1)
+        tt_rank = np.insert(tt_rank, 0, 1)
+        tt_rank = np.append(tt_rank, 1)
+
+    tt_rank = tt_rank.astype(int)
+    tt_cores = [None] * num_dims
+
+    for i in range(num_dims):
+        curr_core_shape = (tt_rank[i], shape[i], tt_rank[i + 1])
+        tt_cores[i] = torch.randn(curr_core_shape,dtype=dtype)*stddev + mean
+
+    return TensorTrain(tt_cores, shape, tt_rank)
+
+
+
+
 def tensor_ones(shape, dtype=torch.float32):
     """Generate TT-tensor of the given shape with all entries equal to 1.
     Args:
@@ -128,13 +167,13 @@ def matrix_zeros(shape, rank=2, dtype=torch.float32):
 
     curr_core_shape = (1, shape[0][0], shape[1][0], rank)
     tt_cores[0] = torch.zeros(curr_core_shape, dtype=dtype)
-    
+
     for i in range(1, num_dims - 1):
         curr_core_shape = (rank, shape[0][i], shape[1][i], rank)
         tt_cores[i] = torch.zeros(curr_core_shape, dtype=dtype)
-        
+
     curr_core_shape = (rank, shape[0][num_dims - 1], shape[1][num_dims - 1], 1)
-    tt_cores[num_dims - 1] = torch.zeros(curr_core_shape, dtype=dtype)    
+    tt_cores[num_dims - 1] = torch.zeros(curr_core_shape, dtype=dtype)
 
     return TensorTrain(tt_cores)
 
@@ -281,8 +320,8 @@ def random_matrix(shape, tt_rank=2, mean=0., stddev=1.,
     else:
         raise NotImplementedError('non-zero mean is not supported yet')
 
-        
-        
+
+
 def glorot_initializer(shape, tt_rank=2, dtype=torch.float32):
     shape = list(shape)
     # In case shape represents a vector, e.g. [None, [2, 2, 2]]

@@ -4,7 +4,7 @@ import torch.nn as nn
 
 
 class TensorTrain(object):
-    def __init__(self, tt_cores, shape=None, tt_ranks=None, convert_to_tensors=True):
+    def __init__(self, tt_cores, shape=None, tt_ranks=None, ott=False, convert_to_tensors=True):
         #tt_cores = list(tt_cores)
         if convert_to_tensors:
             for i in range(len(tt_cores)):
@@ -33,7 +33,7 @@ class TensorTrain(object):
         self._parameter = None
         self._dof = np.sum([np.prod(list(tt_core.shape)) for tt_core in self._tt_cores])
         self._total = np.prod(self._shape)
-
+        self.ott = ott
 
     @property
     def tt_cores(self):
@@ -109,7 +109,11 @@ class TensorTrain(object):
             new_cores.append(core)
 
         tt_p = TensorTrain(new_cores, convert_to_tensors=False)
+        #test
+        #core1 = tt_p.tt_cores[0]
         tt_p._parameter = nn.ParameterList(tt_p.tt_cores)
+        #print('core1:',core1)
+        #tt_p._parameter = nn.ParameterList(core1)
         tt_p._is_parameter = True
         return tt_p
 
@@ -162,9 +166,9 @@ class TensorTrain(object):
             return "A Tensor Train of shape %s, TT-ranks: %s" \
                    "\n on device '%s' with compression rate %.2f" % (shape, tt_ranks, device, compression_rate)
 
-
+#Liancheng: convert_to_tensors default set to False
 class TensorTrainBatch():
-    def __init__(self, tt_cores, shape=None, tt_ranks=None, convert_to_tensors=True):
+    def __init__(self, tt_cores, shape=None, tt_ranks=None, ott=False, convert_to_tensors=False):
         #tt_cores = list(tt_cores)
         if convert_to_tensors:
             for i in range(len(tt_cores)):
@@ -174,6 +178,7 @@ class TensorTrainBatch():
 
         self._batch_size = self._tt_cores[0].shape[0]
 
+        self.ott = ott
         if len(self._tt_cores[0].shape) == 5:
             self._is_tt_matrix = True
         else:

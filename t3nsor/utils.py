@@ -5,7 +5,43 @@ from sympy.ntheory import factorint
 from itertools import cycle, islice
 import torch
 
+def b_inv(b_mat):
+    #b_mat = b_mat.cpu()
+    #eye = b_mat.new_ones(b_mat.size(-1)).diag().expand_as(b_mat)
+    #b_inv, _ = torch.gesv(eye, b_mat)
+    #b_inv = b_inv.to(device)
+    #print(b_inv.contiguous())
+    #b = [t.inverse() for t in torch.unbind(b_mat)]
+    #b_inv = torch.stack(b)
+    eps = 1e-5
+    b00 = b_mat[:,0,0]
+    b01 = b_mat[:,0,1]
+    b10 = b_mat[:,1,0]
+    b11 = b_mat[:,1,1]
+    #elementwise multiplication and division
+    det = (b00*b11-b01*b10)
+    b00 = b00/ (det+eps)
+    b01 = b01/ (det+eps)
+    b10 = b10/ (det+eps)
+    b11 = b11/ (det+eps)
+    b_inv1 = torch.cat((torch.cat((b11.view(-1,1,1),-1.*b01.view(-1,1,1)),dim=2),torch.cat((-1.*b10.view(-1,1,1),b00.view(-1,1,1)),dim=2)),dim=1)
+    return b_inv1
 
+
+#shape of t: objk [out_channels,batch_size,r_1,r_2]
+def cayley(t,gpu=True):
+    if gpu:
+        device = torch.device('cuda:0')
+    else:
+        device = torch.device('cpu')
+    if len(t.shape) != 4:
+        print('wrong dimension!')
+    for o in range(0,t.shape[0]):
+        #for b in range(0,t.shape[1]):
+        #    t[o,b,:,:] = torch.matmul( torch.eye(t.shape[2],t.shape[3]).to(device) - t[o,b,:,:] , torch.inverse(torch.eye(t.shape[2],t.shape[3]).to(device) + t[o,b,:,:]) )
+        batch_identity = torch.unsqueeze(torch.eye(t.shape[2],t.shape[3]),0).repeat(t.shape[1],1,1).to(device)
+        t[o,:,:,:] = torch.matmul(batch_identity-t[o,:,:,:],b_inv(batch_identity+t[o,:,:,:]))
+    return t
 
 MODES = ['ascending', 'descending', 'mixed']
 CRITERIONS = ['entropy', 'var']

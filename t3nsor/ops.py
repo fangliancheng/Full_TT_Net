@@ -4,6 +4,135 @@ import t3nsor as t3
 import torch
 from t3nsor.utils import kronecker_product
 
+
+def cayley(t):
+    #
+    for i in t.shape[0]:
+        t[i,:,:] = torch.matmul( torch.eye(t.shape[1],t.shape[2]) - t[i,:,:] , torch.inverse(torch.eye(t.shape[1],t.shape[2]) + t[i,:,:]) )
+    return t
+
+
+#dot product, will be called to compute frobenius_norm
+def tt_tt_flat_inner(tt_a, tt_b):
+  """Inner product between two TT-tensors or TT-matrices along all axis.
+  The shapes of tt_a and tt_b should coincide.
+  Args:
+    tt_a: `TensorTrain` or `TensorTrainBatch` object
+    tt_b: `TensorTrain` or `TensorTrainBatch` object
+  Returns
+    a number or a Tensor with numbers for each element in the batch.
+    sum of products of all the elements of tt_a and tt_b
+  Raises:
+    ValueError if the arguments are not `TensorTrain` objects, have different
+      number of TT-cores, different underlying shape, or if you are trying to
+      compute inner product between a TT-matrix and a TT-tensor.
+  Complexity:
+    Multiplying two single TT-objects is O(d r^3 n) where d is the number of
+      TT-cores (tt_a.ndims()), r is the largest TT-rank
+        max(tt_a.get_tt_rank(), tt_b.get_tt_rank())
+      and n is the size of the axis dimension, e.g.
+        for a tensor of size 4 x 4 x 4, n is 4;
+        for a 9 x 64 matrix of raw shape (3, 3, 3) x (4, 4, 4) n is 12
+      A more precise complexity is O(d r1 r2 n max(r1, r2)) where
+        r1 is the largest TT-rank of tt_a and r2 is the largest TT-rank of tt_b.
+    The complexity of this operation for batch input is O(batch_size d r^3 n).
+  """
+
+  if tt_a.is_tt_matrix() != tt_b.is_tt_matrix():
+    raise ValueError('One of the arguments is a TT-tensor, the other is '
+                     'a TT-matrix, disallowed')
+  are_both_matrices = tt_a.is_tt_matrix() and tt_b.is_tt_matrix()
+
+  # TODO: compare shapes and raise if not consistent.
+
+  ndims = tt_a.ndims
+  if tt_b.ndims != ndims:
+    raise ValueError('Arguments should have the same number of dimensions, '
+                     'got %d and %d instead.' % (ndims, tt_b.ndims()))
+
+  axes_str = 'ij' if are_both_matrices else 'i'
+  # Convert BatchSize 1 batch into TT object to simplify broadcasting.
+  # tt_a = shapes.squeeze_batch_dim(tt_a)
+  # tt_b = shapes.squeeze_batch_dim(tt_b)
+  is_a_batch = isinstance(tt_a, TensorTrainBatch)
+  is_b_batch = isinstance(tt_b, TensorTrainBatch)
+  is_res_batch = is_a_batch or is_b_batch
+  a_batch_str = 'o' if is_a_batch else ''
+  b_batch_str = 'o' if is_b_batch else ''
+  res_batch_str = 'o' if is_res_batch else ''
+  init_einsum_str = '{1}a{0}b,{2}c{0}d->{3}bd'.format(axes_str, a_batch_str,
+                                                      b_batch_str,
+                                                      res_batch_str)
+  a_core = tt_a.tt_cores[0]
+  b_core = tt_b.tt_cores[0]
+  # Simplest example of this operation:
+  # if both arguments are TT-tensors, then it is
+  # res = tf.einsum('aib,cid->bd', a_core, b_core)
+  res = torch.einsum(init_einsum_str, a_core, b_core)
+
+  einsum_str = '{3}ac,{1}a{0}b,{2}c{0}d->{3}bd'.format(axes_str, a_batch_str,
+                                                       b_batch_str,
+                                                       res_batch_str)
+  for core_idx in range(1, ndims):
+    a_core = tt_a.tt_cores[core_idx]
+    b_core = tt_b.tt_cores[core_idx]
+    # Simplest example of this operation:
+    # if both arguments are TT-tensors, then it is
+    # res = tf.einsum('ac,aib,cid->bd', res, a_core, b_core)
+    res = torch.einsum(einsum_str, res, a_core, b_core)
+  return torch.squeeze(res)
+
+
+def frobenius_norm_squared(tt, differentiable=True):
+    """
+    Args:'TensorTrain' or 'TensorTrainBatch' objsect
+    TODO:
+
+    Returns
+    a number which is the Frobenius norm squared of `tt`, if it is `TensorTrain`
+    OR
+    a Tensor of size tt.batch_size, consisting of the Frobenius norms squared of
+    each TensorTrain in `tt`, if it is `TensorTrainBatch`
+    """
+
+    if differentiable:
+        if isinstance(tt, TensorTrainBatch):
+            bs_str = 'n'
+        else:
+            bs_str = ''
+        if tt.is_tt_matrix:
+            running_prod = torch.einsum('{0}aijb,{0}cijd->{0}bd'.format(bs_str),
+                                 tt.tt_cores[0], tt.tt_cores[0])
+        else:
+            running_prod = torch.einsum('{0}aib,{0}cid->{0}bd'.format(bs_str),
+                                 tt.tt_cores[0], tt.tt_cores[0])
+
+        for core_idx in range(1, tt.ndims):
+            curr_core = tt.tt_cores[core_idx]
+            if tt.is_tt_matrix:
+                running_prod = torch.einsum('{0}ac,{0}aijb,{0}cijd->{0}bd'.format(bs_str),
+                                   running_prod, curr_core, curr_core)
+            else:
+                running_prod = torch.einsum('{0}ac,{0}aib,{0}cid->{0}bd'.format(bs_str),
+                                   running_prod, curr_core, curr_core)
+
+        return torch.squeeze(running_prod, [-1, -2])
+
+    else:
+      # orth_tt = decompositions.orthogonalize_tt_cores(tt, left_to_right=True)
+      # # All the cores of orth_tt except the last one are orthogonal, hence
+      # # the Frobenius norm of orth_tt equals to the norm of the last core.
+      # if hasattr(tt, 'batch_size'):
+      #   batch_size = shapes.lazy_batch_size(tt)
+      #   last_core = tf.reshape(orth_tt.tt_cores[-1], (batch_size, -1))
+      #   return tf.norm(last_core, axis=1) ** 2
+      # else:
+      #   return tf.norm(orth_tt.tt_cores[-1]) ** 2
+        raise NotImplementedError
+
+
+
+#hadmard product
 def multiply(tt_left,tt_right):
     ndims = tt_left.ndims
     shape = tt_left.raw_shape
@@ -98,14 +227,16 @@ def gather_rows(tt_mat, inds):
     return TensorTrainBatch(slices, convert_to_tensors=False)
 
 
-def transpose(tt_matrix):
+def transpose(tt_matrix,convert_to_tensors=False):
     cores = []
     for core in tt_matrix.tt_cores:
+        #print('core device',core.device)
         cores.append(core.transpose(1, 2))
-    return TensorTrain(cores)
+    return TensorTrain(cores,convert_to_tensors=convert_to_tensors)
+
 
 #Liancheng
-def tt_tt_mul(tt_matrix_a, tt_matrix_b):
+def tt_tt_mul(tt_matrix_a, tt_matrix_b,convert_to_tensors=False):
     """Multiplies two TT-matrices and returns the TT-matrix of the result.
   Args:
     tt_matrix_a: `TensorTrain` or `TensorTrainBatch` object containing
@@ -134,24 +265,19 @@ def tt_tt_mul(tt_matrix_a, tt_matrix_b):
     ndims = tt_matrix_a.ndims
     if tt_matrix_b.ndims != ndims:
         raise ValueError('Arguments should have the same number of dimensions, '
-                     'got %d and %d instead.' % (ndims, tt_matrix_b.ndims()))
+                     'got %d and %d instead.' % (ndims, tt_matrix_b.ndims))
 
     # Convert BatchSize 1 batch into TT object to simplify broadcasting.
     # tt_matrix_a = shapes.squeeze_batch_dim(tt_matrix_a)
     # tt_matrix_b = shapes.squeeze_batch_dim(tt_matrix_b)
-    # is_a_batch = isinstance(tt_matrix_a, TensorTrainBatch)
-    # is_b_batch = isinstance(tt_matrix_b, TensorTrainBatch)
-    # is_res_batch = is_a_batch or is_b_batch
-    # a_batch_str = 'o' if is_a_batch else ''
-    # b_batch_str = 'o' if is_b_batch else ''
-    # res_batch_str = 'o' if is_res_batch else ''
-    # einsum_str = '{}aijb,{}cjkd->{}acikbd'.format(a_batch_str, b_batch_str,
-    #                                             res_batch_str)
-    a_batch_str = ''
-    b_batch_str = ''
-    res_batch_str = ''
+    is_a_batch = isinstance(tt_matrix_a, TensorTrainBatch)
+    is_b_batch = isinstance(tt_matrix_b, TensorTrainBatch)
+    is_res_batch = is_a_batch or is_b_batch
+    a_batch_str = 'o' if is_a_batch else ''
+    b_batch_str = 'o' if is_b_batch else ''
+    res_batch_str = 'o' if is_res_batch else ''
     einsum_str = '{}aijb,{}cjkd->{}acikbd'.format(a_batch_str, b_batch_str,
-                                                res_batch_str)
+                                                 res_batch_str)
     result_cores = []
     a_shape = tt_matrix_a.raw_shape
     a_ranks = tt_matrix_a.ranks
@@ -161,15 +287,22 @@ def tt_tt_mul(tt_matrix_a, tt_matrix_b):
     for core_idx in range(ndims):
         a_core = tt_matrix_a.tt_cores[core_idx]
         b_core = tt_matrix_b.tt_cores[core_idx]
+
+        # Liancheng
+        # a_core = a_core.to(b_core.device)
+
+        #print('a_core device:',a_core.device)
+        #print('b_core device:',b_core.device)
         curr_res_core = torch.einsum(einsum_str, a_core, b_core)
 
         res_left_rank = a_ranks[core_idx] * b_ranks[core_idx]
         res_right_rank = a_ranks[core_idx + 1] * b_ranks[core_idx + 1]
         left_mode = a_shape[0][core_idx]
         right_mode = b_shape[1][core_idx]
-
-        core_shape = (res_left_rank, left_mode, right_mode,
-                    res_right_rank)
+        if is_res_batch:
+            core_shape = (batch_size, res_left_rank, left_mode, right_mode, res_right_rank)
+        else:
+            core_shape = (res_left_rank, left_mode, right_mode, res_right_rank)
         curr_res_core = torch.reshape(curr_res_core, core_shape)
         result_cores.append(curr_res_core)
 
@@ -177,12 +310,14 @@ def tt_tt_mul(tt_matrix_a, tt_matrix_b):
     static_a_ranks = tt_matrix_a.ranks
     static_b_ranks = tt_matrix_b.ranks
     out_ranks = [a_r * b_r for a_r, b_r in zip(static_a_ranks, static_b_ranks)]
+    if is_res_batch:
+        return TensorTrainBatch(result_cores,convert_to_tensors=convert_to_tensors)
+    else:
+        return TensorTrain(result_cores,convert_to_tensors=convert_to_tensors)
 
-    return TensorTrain(result_cores)
 
-
-
-def tt_dense_matmul(tt_matrix_a, matrix_b):
+#TODO: add dense_tt_matmul
+def tt_dense_matmul(tt_matrix_a, matrix_b,convert_to_tensors=False):
     """Multiplies a TT-matrix by a regular matrix, returns a regular matrix.
     Args:
     tt_matrix_a: `TensorTrain` object containing a TT-matrix of size M x N
@@ -196,8 +331,7 @@ def tt_dense_matmul(tt_matrix_a, matrix_b):
     b_rows = matrix_b.shape[0]
     if a_columns is not None and b_rows is not None:
         if a_columns != b_rows:
-            raise ValueError('Arguments shapes should align got %d and %d instead.' %
-                       (tt_matrix_a.shape, matrix_b.shape))
+            raise ValueError('Arguments shapes should align got %d and %d instead.' %(tt_matrix_a.shape, matrix_b.shape))
 
     a_shape = tt_matrix_a.shape
     a_raw_shape = tt_matrix_a.raw_shape
@@ -212,8 +346,15 @@ def tt_dense_matmul(tt_matrix_a, matrix_b):
 
     for core_idx in reversed(range(ndims)):
         curr_core = tt_matrix_a.tt_cores[core_idx]
+        #print('curr_core device:',curr_core.device)
+
+        #Liancheng
+        curr_core = curr_core.to(data.device)
+
         # On the k = core_idx iteration, after applying einsum the shape of data
         # becomes ik x (ik-1..., id-1, K, j0, ..., jk-1) x rank_k
+        #print('curr_core device:',curr_core.device)
+        #print('data device:',data.device)
         data = torch.einsum('aijb,rjb->ira', curr_core, data)
         if core_idx > 0:
           # After reshape the shape of data becomes

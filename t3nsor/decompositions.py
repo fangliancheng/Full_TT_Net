@@ -152,6 +152,71 @@ def orthogonalize_tt_cores(tt):
   return TensorTrain(tt_cores)
 
 
+def orthogonalize_batch_tt_cores_left_to_right(tt):
+  """Orthogonalize TT-cores of a batch TT-object in the left to right order.
+  Args:
+    tt: TensorTrainBatch.
+  Returns:
+    TensorTrainBatch
+  """
+  # Left to right orthogonalization.
+  ndims = tt.ndims
+  raw_shape = tt.raw_shape
+  tt_ranks = shapes.lazy_tt_ranks(tt)
+  next_rank = tt_ranks[0]
+  batch_size = shapes.lazy_batch_size(tt)
+
+  # Copy cores references so we can change the cores.
+  tt_cores = list(tt.tt_cores)
+  for core_idx in range(ndims - 1):
+    curr_core = tt_cores[core_idx]
+    # TT-ranks could have changed on the previous iteration, so `tt_ranks` can
+    # be outdated for the current TT-rank, but should be valid for the next
+    # TT-rank.
+    curr_rank = next_rank
+    next_rank = tt_ranks[core_idx + 1]
+    if tt.is_tt_matrix:
+      curr_mode_left = raw_shape[0][core_idx]
+      curr_mode_right = raw_shape[1][core_idx]
+      curr_mode = curr_mode_left * curr_mode_right
+    else:
+      curr_mode = raw_shape[0][core_idx]
+
+    qr_shape = (batch_size, curr_rank * curr_mode, next_rank)
+    curr_core = torch.reshape(curr_core, qr_shape)
+    curr_core, triang = torch.qr(curr_core)
+    # if triang.get_shape().is_fully_defined():
+    #   triang_shape = triang.get_shape().as_list()
+    # else:
+    #   triang_shape = tf.shape(triang)
+
+    #Liancheng
+    triang_shape = triang.shape
+
+    # The TT-rank could have changed: if qr_shape is e.g. 4 x 10, than q would
+    # be of size 4 x 4 and r would be 4 x 10, which means that the next rank
+    # should be changed to 4.
+    next_rank = triang_shape[1]
+    if tt.is_tt_matrix:
+      new_core_shape = (batch_size, curr_rank, curr_mode_left, curr_mode_right,
+                        next_rank)
+    else:
+      new_core_shape = (batch_size, curr_rank, curr_mode, next_rank)
+
+    tt_cores[core_idx] = torch.reshape(curr_core, new_core_shape)
+
+    next_core = torch.reshape(tt_cores[core_idx + 1], (batch_size, triang_shape[2], -1))
+    tt_cores[core_idx + 1] = torch.matmul(triang, next_core)
+
+  if tt.is_tt_matrix:
+    last_core_shape = (batch_size, next_rank, raw_shape[0][-1],
+                       raw_shape[1][-1], 1)
+  else:
+    last_core_shape = (batch_size, next_rank, raw_shape[0][-1], 1)
+  tt_cores[-1] = torch.reshape(tt_cores[-1], last_core_shape)
+  # TODO: infer the tt_ranks.
+  return TensorTrainBatch(tt_cores,convert_to_tensors=False)
+
 
 
 def round_tt(tt, max_tt_rank, epsilon=None):
