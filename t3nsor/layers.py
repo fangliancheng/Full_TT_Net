@@ -7,6 +7,8 @@ from t3nsor.utils import cayley
 from t3nsor import TensorTrainBatch
 from t3nsor import TensorTrain
 
+import pdb
+
 #input: TensorTrainBatch1
 class TTFC(nn.Module):
     def __init__(self,shape,tt_rank=8,in_channels=120,init=None):
@@ -20,7 +22,7 @@ class TTFC(nn.Module):
         self.init_shape = [4,8,4,8]
         if init is None:
             #init = t3.glorot_initializer(self.init_shape, tt_rank=tt_rank)
-            init = t3.tensor_with_random_cores(self.init_shape)
+            init = t3.tensor_with_random_cores(self.init_shape,tt_rank = tt_rank)
         self.weight = init.to_parameter()
         self.parameters = self.weight.parameter
 
@@ -40,7 +42,8 @@ class TTFC(nn.Module):
             curr_batch_cores = list_in_list[tt_batch_iter]
             #curr_batch_cores is a list of tt_cores, each tt_core is 4 dimension: batch_size, r_1, n_1, r_2
             count_2_norm = 0
-            for core_iter in range(0,len(curr_batch_cores)):
+            for core_iter in range(0,len(curr_batch_cores)-1):
+
                 #weight in exactly same TT format as input
                 input_curr_core = curr_batch_cores[core_iter]
                 weight_curr_core = self.weight.tt_cores[core_iter]
@@ -48,20 +51,31 @@ class TTFC(nn.Module):
                 for slice_iter in range(0,n):
                     #out.shape: batch_size, r, r
                     out = torch.einsum('jk,bji->bki', weight_curr_core[:,slice_iter,:], input_curr_core[:,:,slice_iter,:])
-                    out = 1/2*(out.transpose(1,2)-out)
+                    out_t = 1/2*(out.transpose(1,2)-out)
+
+                    # print(out_t.shape)
+                    # pdb.set_trace()
+
                     # print('out shape:',out.shape)
                     # if max(torch.norm(out,dim=(1,2)))<1e-8:
                     #     print('zero value in norm!!!!!!')
                     #gradient of zero norm is nan, need to add an eps
                     eps = 1e-5
-                    count_2_norm = count_2_norm + torch.norm(out+eps*torch.ones(out.shape).to(out.device),dim=(1,2))**2
+                    count_2_norm = count_2_norm + torch.norm(out_t+eps*torch.ones(out.shape).to(out.device),dim=(1,2))**2
             #norm_list will be a list of torch tensors
             #print('norm_matrix shape222:',norm_matrix)
+            count_2_norm_sqrt = torch.sqrt(count_2_norm + eps)
             if tt_batch_iter == 0:
                 #print('count_2_norm shape:',count_2_norm.shape)
-                norm_matrix = torch.unsqueeze(count_2_norm,dim=1)
+                norm_matrix = torch.unsqueeze(count_2_norm_sqrt,dim=1)
             else:
-                norm_matrix = torch.cat((norm_matrix,torch.unsqueeze(count_2_norm,dim=1)),dim=1)
+                #pdb.set_trace()
+                norm_matrix = torch.cat((norm_matrix,torch.unsqueeze(count_2_norm_sqrt,dim=1)),dim=1)
+
+                #TODO: cat
+
+        print(norm_matrix.view(out.shape[0],-1))
+        #pdb.set_trace()
         return norm_matrix.view(out.shape[0],-1)
         #shape of output: [batch_size,in_channels]
 
@@ -82,18 +96,13 @@ class TTConv(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        #nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
         #self.weight.data.constant_(1/self.N)
-        nn.init.constant_(self.weight, 1/self.in_channels)
+        #nn.init.constant_(self.weight, 1/self.in_channels)
 
     #input:list(TensorTrainBatch1,TensorTrainBatch2,TensorTrainBatch3)
     def forward(self,input):
-        # print('forward!!!')
-        # print('input tt batch:',input[0])
-        # print('input length:',len(input))
         list_in_list = [i.tt_cores for i in input]
-        #print('list_in_list length',len(list_in_list))
-        #print('list in list:',list_in_list)
         re_organized = []
         for core_iter in range(0,self.ndims):
             temp = [i[core_iter] for i in list_in_list]
@@ -114,11 +123,12 @@ class TTConv(nn.Module):
             stacked_core_list.append(torch.stack(temp_list,dim=0))
         #stacked_core_list will be [stacked_1,stacked_2,stracked_3,stracked_4]
 
+        #check duplication: not duplicate until here
+
         #apply logm
         for i in range(1,self.ndims-1):
-            #print('stack shape:',stacked_core_list[i].shape)
-            a =  1/2*(stacked_core_list[i].transpose(2,4)-stacked_core_list[i])
-            stacked_core_list[i] = 1/2*(stacked_core_list[i].transpose(2,4)-stacked_core_list[i])
+            stacked_core_list[i] = 1/2*(stacked_core_list[i].transpose(2,4) - stacked_core_list[i])
+            #pdb.set_trace()
 
         out_slice_list = []
         cat_slice = []
@@ -126,20 +136,22 @@ class TTConv(nn.Module):
         for core_iter in range(0,self.ndims):
             if core_iter == 0:
                 for slice_iter in range(0,self.shape[core_iter]):
-                    out_slice_list.append(torch.unsqueeze(torch.einsum('io,ibkj->obkj', self.weight[:,slice_cumulative_count,:], stacked_core_list[core_iter][:,:,:,slice_iter,:]),3))
+                    out_slice_list.append(torch.unsqueeze(torch.einsum('io,ibkj->obkj', self.weight[:,slice_cumulative_count,:], stacked_core_list[core_iter][:,:,:,slice_iter,:]),dim=3))
                     slice_cumulative_count += 1
                 cat_slice.append(torch.cat(out_slice_list,dim=3))
                 out_slice_list = []
             elif core_iter == self.ndims-1:
                 for slice_iter in range(0,self.shape[core_iter]):
-                    out_slice_list.append(torch.unsqueeze(torch.einsum('io,ibkj->obkj', self.weight[:,slice_cumulative_count,:], stacked_core_list[core_iter][:,:,:,slice_iter,:]),3))
+                    out_slice_list.append(torch.unsqueeze(torch.einsum('io,ibkj->obkj', self.weight[:,slice_cumulative_count,:], stacked_core_list[core_iter][:,:,:,slice_iter,:]),dim=3))
                     slice_cumulative_count += 1
                 cat_slice.append(torch.cat(out_slice_list,dim=3))
                 out_slice_list = []
             else:
+                #pdb.set_trace()
                 for slice_iter in range(0,self.shape[core_iter]):
-                    out_slice_list.append(torch.unsqueeze(cayley(torch.einsum('io,ibkj->obkj', self.weight[:,slice_cumulative_count,:], stacked_core_list[core_iter][:,:,:,slice_iter,:])),3))
+                    out_slice_list.append(torch.unsqueeze(cayley(torch.einsum('io,ibkj->obkj', self.weight[:,slice_cumulative_count,:], stacked_core_list[core_iter][:,:,:,slice_iter,:])),dim=3))
                     slice_cumulative_count += 1
+                #cat_slice already duplicated!!!
                 cat_slice.append(torch.cat(out_slice_list,dim=3))
                 out_slice_list = []
 
@@ -154,10 +166,7 @@ class TTConv(nn.Module):
         ttbatch_list = []
         for i in range(0,self.out_channels):
             ttbatch_list.append(TensorTrainBatch(re_organized_splited_list[i*self.ndims:i*self.ndims+self.ndims:1],convert_to_tensors=False))
-        # print('ttbatch_list length:',len(ttbatch_list))
-        # print('ttbatch_list one element shape:',ttbatch_list[0].tt_cores[0].shape)
-        # print('ttbatch_list one element shape 2:',ttbatch_list[0].tt_cores[1].shape)
-        # print('TTconv good!!!')
+        #pdb.set_trace()
         return ttbatch_list
 
 
