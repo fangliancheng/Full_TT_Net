@@ -1,19 +1,21 @@
 import argparse
-from torchvision import datasets, transforms
-import models
+from torchvision import datasets, transforms, models
+import my_models
 import easydict as edict
 import t3nsor as t3
 from common import *
 from dataloader import imagenet_loader
 from dataloader import cifar_loader
+from dataloader import minist_loader
 from t3nsor import TensorTrainBatch
 from t3nsor import TensorTrain
 from torch import autograd
+import torch.nn as nn
 #torch.set_default_tensor_type(torch.cuda.FloatTensor)
-
+import pdb
 
 parser = argparse.ArgumentParser(description='PyTorch')
-parser.add_argument('--arch', default='manifold_net', type=str, help='arch')
+parser.add_argument('--arch', default='pre_cnn', type=str, help='arch')
 parser.add_argument('--dataset', default='CIFAR10', type=str, help='dataset')
 parser.add_argument('--mark', default='t5', type=str, help='mark')
 #parser.add_argument('--gpu', default='1', type=int, help='GPU id to use.')
@@ -31,13 +33,16 @@ settings = edict.EasyDict({
     "FINETUNE": False,
     "WORKERS" : 12,
     "BATCH_SIZE" : 64,
-    "PRINT_FEQ" : 1,
+    "PRINT_FEQ" : 10,
     "LR" : 0.1,
     "EPOCHS" : 45,
-    "CLIP_GRAD": 5,
+    "CLIP_GRAD": 0,
     "ITERATE_NUM":6,
-    "TT_SHAPE":[4,8,4,8],
-    "TT_RANK": 2,
+    "TT_SHAPE":[4,8,4,4],
+    "TT_RANK": 4,
+    "FEATURE_EXTRACT":'cnn',
+    "OTT": False,
+    "BENCHMARK": True,
 })
 
 if settings.GPU:
@@ -45,9 +50,9 @@ if settings.GPU:
 else:
     device = torch.device('cpu')
 
-import os
-os.environ['CUDA_DEVICE_ORDER']='PCI_BUS_ID'
-os.environ['CUDA_VISIBLE_DEVICES']='1'
+# import os
+# os.environ['CUDA_DEVICE_ORDER']='PCI_BUS_ID'
+# os.environ['CUDA_VISIBLE_DEVICES']='1'
 
 settings.OUTPUT_FOLDER = "result/pytorch_{}_{}_{}".format(args.arch, args.mark, args.dataset)
 snapshot_dir = dir(os.path.join(settings.OUTPUT_FOLDER, 'snapshot'))
@@ -68,7 +73,15 @@ def train(model, train_loader, val_loader, dir=None):
     else:
         criterion = nn.CrossEntropyLoss()
 
-    optimizer = torch.optim.SGD(model.parameters(), settings.LR, momentum=0.9, weight_decay=1e-4)
+    params_to_update = model.parameters()
+    if settings.FEATURE_EXTRACT=='cnn':
+        params_to_update = []
+        for name,param in model.named_parameters():
+            if param.requires_grad == True:
+                params_to_update.append(param)
+
+    #weight_decay set to a big value: 1e-1
+    optimizer = torch.optim.SGD(params_to_update, settings.LR, momentum=0.9, weight_decay=1e-3)
 
     def adjust_learning_rate(optimizer, epoch):
         """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
@@ -98,62 +111,23 @@ def train(model, train_loader, val_loader, dir=None):
         # if epoch == 2:
         #     p()
         for batch_idx, (input, target) in enumerate(train_loader):
-
-            # print('data input:',input)
-            # print('data target:',target)
-            # if i > 21:
-            #     break
-            # input = torch.FloatTensor(input)
-            #data_time.update(time.time() - end)
-            #print('device:',device)
-            #target = target.type(torch.FloatTensor).to(device=device)
-            #print('device:',device)
             if settings.GPU:
-                #target = target.cuda(non_blocking=True)
-                #print(target.shape)
                 target = target.to(device=device)
-                #print('target device:',target.device)
-            #input = input.type(torch.FloatTensor).to(device=device)
-                #input = input.cuda(non_blocking=True)
-                #print('input shape:',input.shape)
                 input = input.to(device=device)
-                #print('input device:',input.device)
 
-
-            if args.arch == 'manifold_net':
-                #convert input from dense format to TT format, specificaly, TensorTrainBatch
-                #TODO: Make sure cores in GPU?
-                #input shape: [batch_size 3 32 32]
-                tt_cores_1 = []
-                tt_cores_2 = []
-                tt_cores_3 = []
-                tt_batch_cores_1 = []
-                tt_batch_cores_2 = []
-                tt_batch_cores_3 = []
-                for i in range(0,settings.BATCH_SIZE):
-                    tt_cores_1 += t3.to_tt_tensor(input[i,0,:,:].view(settings.TT_SHAPE),max_tt_rank=settings.TT_RANK).tt_cores
-                    tt_cores_2 += t3.to_tt_tensor(input[i,1,:,:].view(settings.TT_SHAPE),max_tt_rank=settings.TT_RANK).tt_cores
-                    tt_cores_3 += t3.to_tt_tensor(input[i,2,:,:].view(settings.TT_SHAPE),max_tt_rank=settings.TT_RANK).tt_cores
-
-                 #unsqueeze
-                tt_core_1_unsq = [torch.unsqueeze(i,0) for i in tt_cores_1]
-                tt_core_2_unsq = [torch.unsqueeze(i,0) for i in tt_cores_2]
-                tt_core_3_unsq = [torch.unsqueeze(i,0) for i in tt_cores_3]
-                #print('tt_core_1_unsq:',tt_core_1_unsq[0:(settings.BATCH_SIZE-1)*4+1:4])
-                #print('shape:',[i.shape for i in tt_core_1_unsq[1:(settings.BATCH_SIZE-1)*4+2:4]])
-                for shift in range(1,5):
-                    tt_batch_cores_1.append(torch.cat(tt_core_1_unsq[shift-1:(settings.BATCH_SIZE-1)*4+shift:4],dim=0))
-                    tt_batch_cores_2.append(torch.cat(tt_core_2_unsq[shift-1:(settings.BATCH_SIZE-1)*4+shift:4],dim=0))
-                    tt_batch_cores_3.append(torch.cat(tt_core_3_unsq[shift-1:(settings.BATCH_SIZE-1)*4+shift:4],dim=0))
-
-                input_tt = [TensorTrainBatch(tt_batch_cores_1),TensorTrainBatch(tt_batch_cores_2),TensorTrainBatch(tt_batch_cores_3)]
+            if settings.FEATURE_EXTRACT == 'tt':
+                input_tt = t3.input_to_tt(input,settings)
 
             data_time.update(time.time() - end)
 
             # compute output
             with autograd.detect_anomaly():
-                output = model(input_tt)
+                if settings.FEATURE_EXTRACT == 'tt':
+                    output = model(input_tt)
+                else:
+                    output = model(input)
                 loss = criterion(output, target)
+                #pdb.set_trace()
                 if loss > 10:
                     print('loss explosion!!')
                     #break
@@ -166,9 +140,6 @@ def train(model, train_loader, val_loader, dir=None):
             losses.update(loss.item(), input.size(0))
             top1.update(prec1.item(), input.size(0))
             top5.update(prec5.item(), input.size(0))
-            # losses.update(loss.item(), settings.BATCH_SIZE)
-            # top1.update(prec1.item(), settings.BATCH_SIZE)
-            # top5.update(prec5.item(), settings.BATCH_SIZE)
 
             # # compute gradient and do SGD step
             # optimizer.zero_grad()
@@ -266,9 +237,35 @@ def main():
     # train_loader = imagenet_loader(settings, 'train', shuffle=True, data_augment=True)
     val_loader = cifar_loader(settings, 'val')
     train_loader = cifar_loader(settings, 'train', shuffle=True, data_augment=True)
+    #val_loader = minist_loader(settings, 'val')
+    #train_loader = minist_loader(settings, 'train', shuffle=True)
     # model = finetune_model
     #model = settings.CNN_MODEL(type='ptt_solver', pretrained=settings.FINETUNE, num_classes=settings.NUM_CLASSES)
-    model = settings.CNN_MODEL(settings.TT_SHAPE)
+
+    if settings.FEATURE_EXTRACT == 'cnn' and not settings.BENCHMARK:
+        def set_parameter_requires_grad(model, feature_extracting):
+            if feature_extracting:
+                for param in model.parameters():
+                    param.requires_grad = False
+
+        model = models.resnet18(pretrained=True)
+        set_parameter_requires_grad(model, feature_extracting=True)
+        num_ftrs = model.fc.in_features #512
+        #model_ft.fc = nn.Linear(num_ftrs, num_classes)
+        model.fc = settings.CNN_MODEL(settings)
+    if settings.BENCHMARK == True:
+        def set_parameter_requires_grad(model, feature_extracting):
+            if feature_extracting:
+                for param in model.parameters():
+                    param.requires_grad = False
+
+        model = models.resnet18(pretrained=True)
+        set_parameter_requires_grad(model, feature_extracting=True)
+        num_ftrs = model.fc.in_features #512
+        #model_ft.fc = nn.Linear(num_ftrs, num_classes)
+        model.fc = nn.Linear(512,10)
+    else:
+        model = settings.CNN_MODEL(settings)
 
     if settings.GPU:
         #model = nn.DataParallel(model).cuda()
