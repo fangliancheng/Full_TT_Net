@@ -3,7 +3,24 @@ import torch
 
 from t3nsor.tensor_train import TensorTrain
 from t3nsor.utils import svd_fix
+import pdb
 
+def tt_to_ott(tt):
+    tt_cores = tt.tt_cores
+    ndims = tt.ndims
+    shape = tt.raw_shape
+    ott_cores = []
+    #first core keep same
+    ott_cores.append(tt_cores[0])
+    #middle cores, do QR decomposition each slice
+    for core_idx in range(1,ndims-1):
+        for slice_idx in range(shape[core_idx]):
+            tt_cores[core_idx][:,slice_idx,:] = torch.qr(tt_cores[core_idx][:,slice_idx,:])[0]
+        ott_cores.append(tt_cores[core_idx])
+    #last core, keep samp
+    #pdb.set_trace()
+    ott_cores.append(tt_cores[ndims-1])
+    return TensorTrain(ott_cores,convert_to_tensors=False)
 
 def to_tt_tensor(tens, max_tt_rank=10, epsilon=None):
 

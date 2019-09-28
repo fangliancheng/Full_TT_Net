@@ -4,6 +4,97 @@ from sympy.utilities.iterables import multiset_partitions
 from sympy.ntheory import factorint
 from itertools import cycle, islice
 import torch
+import t3nsor as t3
+from t3nsor import TensorTrainBatch
+from t3nsor import TensorTrain
+
+
+def input_to_tt(input, settings):
+    #input shape: batch_size, num_channels, size_1, size_2
+    #convert input from dense format to TT format, specificaly, TensorTrainBatch
+    #TODO: Make sure cores in GPU?
+    #input shape: [batch_size 3 32 32]
+    num_channels = input.shape[1]
+    input_tt = []
+    for num_c in range(num_channels):
+        tt_cores_curr = []
+        tt_batch_cores_curr = []
+        for batch_iter in range(settings.BATCH_SIZE):
+            if settings.OTT:
+                tt_cores_curr += t3.tt_to_ott(t3.to_tt_tensor(input[batch_iter,num_c,:,:].view(settings.TT_SHAPE),max_tt_rank=settings.TT_RANK)).tt_cores
+            else:
+                tt_cores_curr += t3.to_tt_tensor(input[batch_iter,num_c,:,:].view(settings.TT_SHAPE),max_tt_rank=settings.TT_RANK).tt_cores
+        tt_core_curr_unsq = [torch.unsqueeze(i,dim=0) for i in tt_cores_curr]
+        for shift in range(1,5):
+            tt_batch_cores_curr.append(torch.cat(tt_core_curr_unsq[shift-1:(settings.BATCH_SIZE-1)*4+shift:4],dim=0))
+        input_tt.append(TensorTrainBatch(tt_batch_cores_curr))
+    return input_tt
+
+    # tt_cores_1 = []
+    # tt_cores_2 = []
+    # tt_cores_3 = []
+    # tt_batch_cores_1 = []
+    # tt_batch_cores_2 = []
+    # tt_batch_cores_3 = []
+    # for i in range(0,settings.BATCH_SIZE):
+    #     tt_cores_1 += t3.tt_to_ott(t3.to_tt_tensor(input[i,0,:,:].view(settings.TT_SHAPE),max_tt_rank=settings.TT_RANK)).tt_cores
+    #     tt_cores_2 += t3.tt_to_ott(t3.to_tt_tensor(input[i,1,:,:].view(settings.TT_SHAPE),max_tt_rank=settings.TT_RANK)).tt_cores
+    #     tt_cores_3 += t3.tt_to_ott(t3.to_tt_tensor(input[i,2,:,:].view(settings.TT_SHAPE),max_tt_rank=settings.TT_RANK)).tt_cores
+    #
+    #  #unsqueeze
+    # tt_core_1_unsq = [torch.unsqueeze(i,0) for i in tt_cores_1]
+    # tt_core_2_unsq = [torch.unsqueeze(i,0) for i in tt_cores_2]
+    # tt_core_3_unsq = [torch.unsqueeze(i,0) for i in tt_cores_3]
+    # #print('tt_core_1_unsq:',tt_core_1_unsq[0:(settings.BATCH_SIZE-1)*4+1:4])
+    # #print('shape:',[i.shape for i in tt_core_1_unsq[1:(settings.BATCH_SIZE-1)*4+2:4]])
+    # for shift in range(1,5):
+    #     tt_batch_cores_1.append(torch.cat(tt_core_1_unsq[shift-1:(settings.BATCH_SIZE-1)*4+shift:4],dim=0))
+    #     tt_batch_cores_2.append(torch.cat(tt_core_2_unsq[shift-1:(settings.BATCH_SIZE-1)*4+shift:4],dim=0))
+    #     tt_batch_cores_3.append(torch.cat(tt_core_3_unsq[shift-1:(settings.BATCH_SIZE-1)*4+shift:4],dim=0))
+    #
+    # input_tt = [TensorTrainBatch(tt_batch_cores_1),TensorTrainBatch(tt_batch_cores_2),TensorTrainBatch(tt_batch_cores_3)]
+
+
+def b_inv33(b_mat):
+    #b_mat = b_mat.cpu()
+    #eye = b_mat.new_ones(b_mat.size(-1)).diag().expand_as(b_mat)
+    #b_inv, _ = torch.gesv(eye, b_mat)
+    #b_inv = b_inv.to(device)
+    #print(b_inv.contiguous())
+    #b = [t.inverse() for t in torch.unbind(b_mat)]
+    #b_inv = torch.stack(b)
+    b00 = b_mat[:,0,0]
+    b01 = b_mat[:,0,1]
+    b02 = b_mat[:,0,2]
+    b10 = b_mat[:,1,0]
+    b11 = b_mat[:,1,1]
+    b12 = b_mat[:,1,2]
+    b20 = b_mat[:,2,0]
+    b21 = b_mat[:,2,1]
+    b22 = b_mat[:,2,2]
+    det = (b00*(b11*b22-b12*b21)-b01*(b10*b22-b12*b20)+b02*(b10*b21-b11*b20))
+    c00 = b11*b22 - b12*b21
+    c01 = b02*b21 - b01*b22
+    c02 = b01*b12 - b02*b11
+    c10 = b12*b20 - b10*b22
+    c11 = b00*b22 - b02*b20
+    c12 = b02*b10 - b00*b12
+    c20 = b10*b21 - b11*b20
+    c21 = b01*b20 - b00*b21
+    c22 = b00*b11 - b01*b10
+    eps = 1e-5
+    c00 = (c00/ (det+eps)).view(-1, 1, 1)
+    c01 = (c01/ (det+eps)).view(-1, 1, 1)
+    c02 = (c02/ (det+eps)).view(-1, 1, 1)
+    c10 = (c10/ (det+eps)).view(-1, 1, 1)
+    c11 = (c11/ (det+eps)).view(-1, 1, 1)
+    c12 = (c12/ (det+eps)).view(-1, 1, 1)
+    c20 = (c20/ (det+eps)).view(-1, 1, 1)
+    c21 = (c21/ (det+eps)).view(-1, 1, 1)
+    c22 = (c22/ (det+eps)).view(-1, 1, 1)
+    b_inv1 = torch.cat((torch.cat((c00,c01,c02), dim=2), torch.cat((c10,c11,c12), dim=2), torch.cat((c20,c21,c22), dim=2)), dim=1)
+    return b_inv1
+
 
 def b_inv(b_mat):
     #b_mat = b_mat.cpu()
@@ -40,7 +131,7 @@ def cayley(t,gpu=True):
         #for b in range(0,t.shape[1]):
         #    t[o,b,:,:] = torch.matmul( torch.eye(t.shape[2],t.shape[3]).to(device) - t[o,b,:,:] , torch.inverse(torch.eye(t.shape[2],t.shape[3]).to(device) + t[o,b,:,:]) )
         batch_identity = torch.unsqueeze(torch.eye(t.shape[2],t.shape[3]),0).repeat(t.shape[1],1,1).to(device)
-        t[o,:,:,:] = torch.matmul(batch_identity-t[o,:,:,:],b_inv(batch_identity+t[o,:,:,:]))
+        t[o,:,:,:] = torch.matmul(batch_identity-t[o,:,:,:],torch.inverse(batch_identity+t[o,:,:,:]))
     return t
 
 MODES = ['ascending', 'descending', 'mixed']

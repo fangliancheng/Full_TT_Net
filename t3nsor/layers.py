@@ -9,17 +9,31 @@ from t3nsor import TensorTrain
 
 import pdb
 
+#only work for input channel 3, TODO: other channel
+class to_tt(nn.Module):
+    def __init__(self,settings):
+        super(to_tt,self).__init__()
+        self.batch_size = settings.BATCH_SIZE
+        self.tt_shape = settings.TT_SHAPE
+        self.tt_rank = settings.TT_RANK
+        self.settings = settings
+    def forward(self,input):
+        input = input.view(self.batch_size,1,8,64)
+        #pdb.set_trace()
+        #convert input from dense format to TT format, specificaly, TensorTrainBatch
+        return t3.input_to_tt(input,self.settings)
+
 #input: TensorTrainBatch1
 class TTFC(nn.Module):
-    def __init__(self,shape,tt_rank=8,in_channels=120,init=None):
+    def __init__(self,shape,tt_rank=4,in_channels=120,init=None):
         super(TTFC,self).__init__()
         #example: shape = [7,8,9] d=3 n1=7 n2=8 n3=9
         self.ndims = len(shape)
         self.jj = int(np.sum(shape))
         self.shape = shape
         self.in_channels = in_channels
-        #self.init_shape = [None,[4,8,4,8]]
-        self.init_shape = [4,8,4,8]
+        self.init_shape = [8,8,8,8]
+        #self.init_shape = [4,5,4,5]
         if init is None:
             #init = t3.glorot_initializer(self.init_shape, tt_rank=tt_rank)
             init = t3.tensor_with_random_cores(self.init_shape,tt_rank = tt_rank)
@@ -74,7 +88,7 @@ class TTFC(nn.Module):
 
                 #TODO: cat
 
-        print(norm_matrix.view(out.shape[0],-1))
+        #print(norm_matrix.view(out.shape[0],-1))
         #pdb.set_trace()
         return norm_matrix.view(out.shape[0],-1)
         #shape of output: [batch_size,in_channels]
