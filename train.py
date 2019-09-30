@@ -32,7 +32,7 @@ settings = edict.EasyDict({
     "MODEL_FILE" : None,
     "FINETUNE": False,
     "WORKERS" : 12,
-    "BATCH_SIZE" : 256,
+    "BATCH_SIZE" : 128,
     "PRINT_FEQ" : 10,
     "LR" : 0.1,
     "EPOCHS" : 45,
