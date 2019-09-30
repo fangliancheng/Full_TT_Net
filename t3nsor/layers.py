@@ -9,19 +9,40 @@ from t3nsor import TensorTrain
 
 import pdb
 
-#only work for input channel 3, TODO: other channel
-class to_tt(nn.Module):
+class tt_to_dense(nn.Module):
+    def __init__(self):
+        super(tt_to_dense,self).__init__()
+    def forward(self,input):
+        temp = torch.squeeze(t3.tt_to_dense(input),dim=1)
+        return temp
+
+class layer_to_tt_matrix(nn.Module):
     def __init__(self,settings):
-        super(to_tt,self).__init__()
+        super(layer_to_tt_matrix,self).__init__()
+        self.batch_size = settings.BATCH_SIZE
+        self.tt_shape = settings.TT_MATRIX_SHAPE
+        self.tt_rank = settings.TT_RANK
+        self.settings = settings
+    def forward(self,input):
+        #set channel to be 1
+        input = input.view(self.batch_size,1,512)
+        #pdb.set_trace()
+        #convert input from dense format to TT format, specificaly, TensorTrainBatch
+        return t3.input_to_tt_matrix(input,self.settings)[0]
+
+class layer_to_tt_tensor(nn.Module):
+    def __init__(self,settings):
+        super(layer_to_tt_tensor,self).__init__()
         self.batch_size = settings.BATCH_SIZE
         self.tt_shape = settings.TT_SHAPE
         self.tt_rank = settings.TT_RANK
         self.settings = settings
     def forward(self,input):
+        #set channel to be 1
         input = input.view(self.batch_size,1,8,64)
         #pdb.set_trace()
         #convert input from dense format to TT format, specificaly, TensorTrainBatch
-        return t3.input_to_tt(input,self.settings)
+        return t3.input_to_tt_tensor(input,self.settings)
 
 #input: TensorTrainBatch1
 class TTFC(nn.Module):
@@ -36,7 +57,9 @@ class TTFC(nn.Module):
         #self.init_shape = [4,5,4,5]
         if init is None:
             #init = t3.glorot_initializer(self.init_shape, tt_rank=tt_rank)
-            init = t3.tensor_with_random_cores(self.init_shape,tt_rank = tt_rank)
+            #init = t3.tensor_with_random_cores(self.init_shape,tt_rank = tt_rank)
+            epsilon = 0
+            init = t3.tensor_with_random_cores_epsilon(self.init_shape,tt_rank = tt_rank,epsilon=epsilon)
         self.weight = init.to_parameter()
         self.parameters = self.weight.parameter
 
@@ -111,6 +134,8 @@ class TTConv(nn.Module):
 
     def reset_parameters(self):
         nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        epsilon=0
+        self.weight.data.add_(epsilon)
         #self.weight.data.constant_(1/self.N)
         #nn.init.constant_(self.weight, 1/self.in_channels)
 
@@ -184,66 +209,6 @@ class TTConv(nn.Module):
         return ttbatch_list
 
 
-        # i = -1
-        # j = 0
-        #
-        # #M is the list of batched slices
-        # #construct M
-        # M = [] #len:self.jj*N
-        # for tt_batch in input
-        #     i = i + 1
-        #     cores = tt_batch.tt_cores
-        #     #cores is a list of tt_cores, each tt_core is 4 dimension: batch_size, r_1, n_1, r_2
-        #
-        #     #first core: keep same
-        #     for i in range(0,cores[0].shape[2]):
-        #         M.append(cores[0][:,:,i,:])
-        #
-        #     #middle cores
-        #     for tt_core in cores:
-        #         if tt_core.shape[1] == 1 or tt_core.shape[3] == 1:
-        #             continue
-        #         n = tt_core.shape[2]
-        #         for temp in range(0,n):
-        #             skew_sym_part = 1/2*(tt_core[:,:,temp,:].transpose(1,3)-tt_core[:,:,temp,:])
-        #             M.append(skew_sym_part * self.weight[i][j+temp])
-        #         j = j + n
-        #
-        #      #last core: keep same
-        #     for i in range(0,cores[-1].shape[2]):
-        #          M.append(cores[-1][:,:,i,:])
-        #
-        # #re-organize M to get output
-        # #M = [TensorTrainBatch1.tt_core1.slice1, ...]
-        # #consturct ouput TensorTrainBatch TT cores
-        #
-        # M_new = [] #len:self.jj
-        # #first core, keep same
-        # for i in range(0,self.shape[0]):
-        #     M_new.append(M[i])
-        #
-        # #middle cores
-        # for i in range(self.shape[0],self.jj-self.shape[-1]):
-        #     M_new.append(cayley(M[i] + M[i+self.jj] + M[i + 2*self.jj]))
-        #
-        # #last core: keep same
-        # for i in range(self.jj- self.shape[-1], self.jj):
-        #     M_new.append(M[i])
-        #
-        # cumulate_index = 0
-        # new_tt_cores = []
-        # for core_index in range(0,self.dims):
-        #     curr_core = []
-        #     for i in range(self.shape[core_index]):
-        #         if i == 0:
-        #             curr_core = torch.unsqueeze(M_new[cumulate_index],2)
-        #         else:
-        #             curr_core = torch.cat((curr_core, M_new[cumulate_index + i]),dim=2)
-        #     cumulate_index = cumulate_index + self.shape[core_index]
-        #     new_tt_cores = new_tt_cores.append(curr_core)
-        # return TensorTrainBatch(new_tt_cores, convert_to_tensors=False)
-
-
 class TTLinear(nn.Module):
     def __init__(self, in_features=None, out_features=None, bias=True, init=None, shape=None,
                  auto_shapes=True, d=3, tt_rank=8, stddev=None, auto_shape_mode='ascending',
@@ -296,7 +261,6 @@ class TTLinear(nn.Module):
             temp=t3.tt_dense_matmul(weight_t, x_t).transpose(0, 1)
             return temp.to(x.device)
         else:
-            #error occur!!!
             temp = t3.tt_dense_matmul(weight_t, x_t).transpose(0, 1) + self.bias
             #print('x device:',x.device)
             return temp.to(x.device)
@@ -391,69 +355,67 @@ class TTSolver(nn.Module):
 
 
 
-# class FTTLinear(nn.Module):
-#     def __init__(self, in_features=None, out_features=None, bias=True, init=None, shape=None,
-#                  auto_shapes=True, d=3, tt_rank=8, stddev=None, auto_shape_mode='ascending',
-#                  auto_shape_criterion='entropy',
-#                  ):
-#
-#         super(FTTLinear, self).__init__()
-#
-#         if auto_shapes:
-#             if in_features is None or out_features is None:
-#                 raise ValueError("Shape is not specified")
-#
-#             in_quantization = t3.utils.auto_shape(
-#                 in_features, d=d, criterion=auto_shape_criterion, mode=auto_shape_mode)
-#             out_quantization = t3.utils.auto_shape(
-#                 out_features, d=d, criterion=auto_shape_criterion, modse=auto_shape_mode)
-#
-#             shape = [in_quantization, out_quantization]
-#
-#         if init is None:
-#             if shape is None:
-#                 raise ValueError(
-#                     "if init is not provided, please specify shape, or set auto_shapes=True")
-#         else:
-#             shape = init.raw_shape
-#
-#         if init is None:
-#             init = t3.glorot_initializer(shape, tt_rank=tt_rank)
-#
-#         self.shape = shape
-#         self.weight = init.to_parameter()
-#         self.parameters = self.weight.parameter
-#         #put all forward computation in forward method, for .cuda()
-#         #self.weight_t = t3.transpose(self.weight,convert_to_tensors=False)
-#
-#         bias_shape = init.raw_shape
-#         if bias:
-#             self.bias = torch.nn.Parameter(1e-2 * torch.ones(out_features))
-#         else:
-#             self.register_parameter('bias', None)
-#
-#     def forward(self, x):
-#         #x will be a TensorTrainBatch
-#
-#
-#         #Hint: put all forward pass computation in forward.
-#         #Wrong thing: if we put t3.transpose computation in init, model.cuda() cannot
-#         #transform output of transpose to cuda because it is not claimed to be nn.Parameter
-#         #weight_t = self.weight_t
-#         weight_t = t3.transpose(self.weight,convert_to_tensors=False)
-#         #print('weight_t device',weight_t.tt_cores[0].device)
-#         #print('weight device',self.weight.tt_cores[0].device)
-#         x_t = x.transpose(0, 1)
-#         if self.bias is None:
-#             temp = t3.transpose(t3.tt_tt_matmul(weight_t, x_t))
-#             return temp.to(x.device)
-#         else:
-#             temp = t3.add(t3.transpose(t3.tt_tt_matmul(weight_t, x_t)), self.bias)
-#             #print('x device:',x.device)
-#             return temp.to(x.device)
-#
-#
-#
+class FTTLinear(nn.Module):
+     def __init__(self, in_features=None, out_features=None, bias=False, init=None, shape=[[4,8,4,4],[1,2,5,1]],
+                  auto_shapes=False, d=3, tt_rank=8, stddev=None, auto_shape_mode='ascending',
+                  auto_shape_criterion='entropy',
+                  ):
+
+         super(FTTLinear, self).__init__()
+
+         if auto_shapes:
+             if in_features is None or out_features is None:
+                 raise ValueError("Shape is not specified")
+
+             in_quantization = t3.utils.auto_shape(
+                 in_features, d=d, criterion=auto_shape_criterion, mode=auto_shape_mode)
+             out_quantization = t3.utils.auto_shape(
+                 out_features, d=d, criterion=auto_shape_criterion, mode=auto_shape_mode)
+
+             shape = [in_quantization, out_quantization]
+
+         if init is None:
+             if shape is None:
+                 raise ValueError(
+                     "if init is not provided, please specify shape, or set auto_shapes=True")
+         else:
+             shape = init.raw_shape
+
+         if init is None:
+             init = t3.glorot_initializer(shape, tt_rank=tt_rank)
+
+         self.shape = shape
+         self.weight = init.to_parameter()
+         self.parameters = self.weight.parameter
+         #put all forward computation in forward method, for .cuda()
+         #self.weight_t = t3.transpose(self.weight,convert_to_tensors=False)
+
+         bias_shape = init.raw_shape
+         if bias:
+             self.bias = torch.nn.Parameter(1e-2 * torch.ones(out_features))
+         else:
+             self.register_parameter('bias', None)
+
+     def forward(self, x):
+         #x will be a TensorTrainBatch
+         #Hint: put all forward pass computation in forward.
+         #Wrong thing: if we put t3.transpose computation in init, model.cuda() cannot
+         #transform output of transpose to cuda because it is not claimed to be nn.Parameter
+         #weight_t = self.weight_t
+         #weight_t = t3.transpose(self.weight,convert_to_tensors=False)
+         #x_t = x.transpose(0, 1)
+         if self.bias is None:
+             temp = t3.tt_tt_matmul(x,self.weight)
+             #pdb.set_trace()
+             return temp
+         else:
+             #pdb.set_trace()
+             #TODO: initilize self.bias in TT format
+             temp = t3.add(t3.tt_tt_matmul(x,self.weight), self.bias)
+             return temp
+
+
+
 # class FTT_Solver(nn.Module):
 #     def __init__(self,
 #                 in_features=None,

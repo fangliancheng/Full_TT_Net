@@ -8,8 +8,29 @@ import t3nsor as t3
 from t3nsor import TensorTrainBatch
 from t3nsor import TensorTrain
 
+def tt_to_dense(input):
+    return input.full()
 
-def input_to_tt(input, settings):
+#GOAL: convert a [batch_size,1,512] tensor to TensorTrainBatch_matrix
+def input_to_tt_matrix(input,settings):
+    num_channels = input.shape[1]
+    input_tt = []
+    for num_c in range(num_channels):
+        tt_cores_curr = []
+        tt_batch_cores_curr = []
+
+        for batch_iter in range(input.shape[0]):
+            #settings.TT_MATRIX_SHAPE = [None,[4,8,4,4]]
+            tt_cores_curr += t3.to_tt_matrix(input[batch_iter,num_c,:],shape=settings.TT_MATRIX_SHAPE,max_tt_rank=settings.TT_RANK).tt_cores
+
+        tt_core_curr_unsq = [torch.unsqueeze(i,dim=0) for i in tt_cores_curr]
+        for shift in range(1,5):
+            tt_batch_cores_curr.append(torch.cat(tt_core_curr_unsq[shift-1:(settings.BATCH_SIZE-1)*4+shift:4],dim=0))
+        input_tt.append(TensorTrainBatch(tt_batch_cores_curr))
+    return input_tt
+
+
+def input_to_tt_tensor(input, settings):
     #input shape: batch_size, num_channels, size_1, size_2
     #convert input from dense format to TT format, specificaly, TensorTrainBatch
     #TODO: Make sure cores in GPU?
@@ -19,6 +40,7 @@ def input_to_tt(input, settings):
     for num_c in range(num_channels):
         tt_cores_curr = []
         tt_batch_cores_curr = []
+
         for batch_iter in range(settings.BATCH_SIZE):
             if settings.OTT:
                 tt_cores_curr += t3.tt_to_ott(t3.to_tt_tensor(input[batch_iter,num_c,:,:].view(settings.TT_SHAPE),max_tt_rank=settings.TT_RANK)).tt_cores

@@ -3,7 +3,7 @@ from t3nsor import TensorTrain
 import t3nsor as t3
 import torch
 from t3nsor.utils import kronecker_product
-
+import pdb
 
 def cayley(t):
     #
@@ -161,6 +161,7 @@ def add(tt_a, tt_b):
   """Internal function to be called from add for two TT-tensors.
   Does the actual assembling of the TT-cores to add two TT-tensors.
   """
+  pdb.set_trace()
   ndims = tt_a.ndims
   #dtype = tt_a.dtype
   shape = tt_a.raw_shape
@@ -236,7 +237,7 @@ def transpose(tt_matrix,convert_to_tensors=False):
 
 
 #Liancheng
-def tt_tt_mul(tt_matrix_a, tt_matrix_b,convert_to_tensors=False):
+def tt_tt_matmul(tt_matrix_a, tt_matrix_b,convert_to_tensors=False):
     """Multiplies two TT-matrices and returns the TT-matrix of the result.
   Args:
     tt_matrix_a: `TensorTrain` or `TensorTrainBatch` object containing
@@ -248,10 +249,10 @@ def tt_tt_mul(tt_matrix_a, tt_matrix_b,convert_to_tensors=False):
       are `TensorTrain`s
     `TensorTrainBatch` if any of the arguments is a `TensorTrainBatch`
   Raises:
-    ValueError is the arguments are not TT matrices or if their sizes are not
+    ValueError if the arguments are not TT matrices or if their sizes are not
     appropriate for a matrix-by-matrix multiplication.
   """
-  # # Both TensorTrain and TensorTrainBatch are inherited from TensorTrainBase.
+
   #   if not isinstance(tt_matrix_a, TensorTrainBase) or \
   #       not isinstance(tt_matrix_b, TensorTrainBase) or \
   #       not tt_matrix_a.is_tt_matrix() or \
@@ -284,6 +285,12 @@ def tt_tt_mul(tt_matrix_a, tt_matrix_b,convert_to_tensors=False):
     b_shape = tt_matrix_b.raw_shape
     b_ranks = tt_matrix_b.ranks
 
+    if is_res_batch:
+        if is_a_batch:
+            batch_size = tt_matrix_a.tt_cores[0].shape[0]
+        if is_b_batch:
+            batch_size = tt_matrix_b.tt_cores[0].shape[0]
+
     for core_idx in range(ndims):
         a_core = tt_matrix_a.tt_cores[core_idx]
         b_core = tt_matrix_b.tt_cores[core_idx]
@@ -291,8 +298,6 @@ def tt_tt_mul(tt_matrix_a, tt_matrix_b,convert_to_tensors=False):
         # Liancheng
         # a_core = a_core.to(b_core.device)
 
-        #print('a_core device:',a_core.device)
-        #print('b_core device:',b_core.device)
         curr_res_core = torch.einsum(einsum_str, a_core, b_core)
 
         res_left_rank = a_ranks[core_idx] * b_ranks[core_idx]

@@ -65,7 +65,8 @@ def _validate_input_parameters(is_tensor, shape, **params):
                 raise ValueError('`tt_rank` array has inappropriate size, expected'
                                  '1 or %d, got %d' % (shape[0].size + 1, tt_rank.size))
 
-
+def tensor_with_random_cores_epsilon(shape,tt_rank,epsilon):
+    return tensor_with_random_cores(shape,tt_rank=tt_rank,mean=epsilon)
 
 def tensor_with_random_cores(shape, tt_rank=2, mean=0., stddev=1.,dtype=torch.float32):
     """Generate a TT-tensor of the given shape with N(mean, stddev^2) cores.
