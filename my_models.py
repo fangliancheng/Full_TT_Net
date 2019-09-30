@@ -9,7 +9,7 @@ import torch.nn.functional as F
 class pre_mani_net(nn.Module):
     def __init__(self,settings):
         super(pre_mani_net,self).__init__()
-        self.to_tt = t3.to_tt(settings)
+        self.to_tt = t3.layer_to_tt_tensor(settings)
         self.conv1 = t3.TTConv(settings.TT_SHAPE,in_channels=1,out_channels=16)
         # self.conv1 = nn.Conv2d(3,6,5)
         # self.pool = nn.MaxPool2d(2,2)
@@ -75,33 +75,17 @@ class manifold_Net(nn.Module):
         x = self.fc4(x)
         return F.log_softmax(x, dim=1)
 
-def man_net(shape,pretrained=False):
-    model = manifold_Net(shape)
-    if pretrained:
-        # state_dict = load_state_dict_from_url(model_urls[arch],
-        #                                       progress=progress)
-        # model.load_state_dict(state_dict)
-        raise NotImplementedError
-    return model
 
-
-class F_TT_Net(nn.Module):
-    def __init__(self):
-        super(P_TT_Net,self).__init__()
-        self.ip1 = t3.FTTLinear(in_features=28*28, out_features=300)
-        self.relu_ip1 = nn.ReLU(inplace=True)
-        self.ip2 = t3.FTTLinear(in_features=300,out_features=100)
-        self.relu_ip2 = nn.ReLU(inplace=True)
-        self.ip3 = t3.FTTLinear(in_features=100,out_features=10)
-
+class pre_FTT_Net(nn.Module):
+    def __init__(self,settings):
+        super(pre_FTT_Net,self).__init__()
+        self.to_tt_matrix = t3.layer_to_tt_matrix(settings)
+        self.ip1 = t3.FTTLinear(in_features=512, out_features=10)
+        self.to_dense = t3.layers.tt_to_dense()
     def forward(self,x):
-        x = x.flatten(x,1)
-        x = x.view(x.size(0), 28*28)
+        x = self.to_tt_matrix(x)
         x = self.ip1(x)
-        x = self.relu_ip1(x)
-        x = self.ip2(x)
-        x = self.relu_ip2(x)
-        x = self.ip3(x)
+        x = self.to_dense(x)
         return F.log_softmax(x,dim=1)
 
 

@@ -32,17 +32,18 @@ settings = edict.EasyDict({
     "MODEL_FILE" : None,
     "FINETUNE": False,
     "WORKERS" : 12,
-    "BATCH_SIZE" : 64,
+    "BATCH_SIZE" : 256,
     "PRINT_FEQ" : 10,
     "LR" : 0.1,
     "EPOCHS" : 45,
     "CLIP_GRAD": 0,
     "ITERATE_NUM":6,
     "TT_SHAPE":[4,8,4,4],
+    "TT_MATRIX_SHAPE":[None,[4,8,4,4]],
     "TT_RANK": 4,
     "FEATURE_EXTRACT":'cnn',
     "OTT": False,
-    "BENCHMARK": True,
+    "BENCHMARK": False,
 })
 
 if settings.GPU:
@@ -243,6 +244,7 @@ def main():
     #model = settings.CNN_MODEL(type='ptt_solver', pretrained=settings.FINETUNE, num_classes=settings.NUM_CLASSES)
 
     if settings.FEATURE_EXTRACT == 'cnn' and not settings.BENCHMARK:
+        #pdb.set_trace()
         def set_parameter_requires_grad(model, feature_extracting):
             if feature_extracting:
                 for param in model.parameters():
@@ -251,9 +253,9 @@ def main():
         model = models.resnet18(pretrained=True)
         set_parameter_requires_grad(model, feature_extracting=True)
         num_ftrs = model.fc.in_features #512
-        #model_ft.fc = nn.Linear(num_ftrs, num_classes)
         model.fc = settings.CNN_MODEL(settings)
-    if settings.BENCHMARK == True:
+        #pdb.set_trace()
+    elif settings.BENCHMARK == True:
         def set_parameter_requires_grad(model, feature_extracting):
             if feature_extracting:
                 for param in model.parameters():

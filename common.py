@@ -5,7 +5,7 @@ import torch.nn as nn
 #from models.resnet import *
 import sys
 from ptt_vgg import *
-from models import *
+from my_models import *
 
 DATASET_PATH = {
     'MINIST': '',
@@ -31,6 +31,8 @@ MODEL_DICT = {
      'ptt_vgg19': ptt_vgg19,
      #'resnet18': resnet18,
      'manifold_net':manifold_Net,
+     'pre_cnn': pre_mani_net,
+     'linear': pre_FTT_Net,
  }
 def skew_sym_part(m):
     return 1/2 * (m.t() - m)
