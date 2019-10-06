@@ -6,7 +6,6 @@ import math
 from t3nsor.utils import cayley
 from t3nsor import TensorTrainBatch
 from t3nsor import TensorTrain
-
 import pdb
 
 class tt_to_dense(nn.Module):
@@ -120,7 +119,7 @@ class TTFC(nn.Module):
 class TTConv(nn.Module):
     #N is in_channels
     #in_channels=3 means input will be 3 TensorTrainBatch, out_channels=84 means output will be 84 TensorTrainBatch
-    def __init__(self,shape,in_channels=3,out_channels=120):
+    def __init__(self,shape,in_channels,out_channels):
         super(TTConv,self).__init__()
         #example: shape = [4,8,4,8] d=4 n1=4 n2=8 n3=4, n4=8
         self.ndims = len(shape)
@@ -133,9 +132,15 @@ class TTConv(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        self.weight.data = nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        #normalize weight
+        for i in range(0,self.jj):
+            for j in range(0,self.out_channels):
+                self.weight.data[:,i,j] = self.weight.data[:,i,j]/self.weight.data[:,i,j].sum()
         epsilon=0
         self.weight.data.add_(epsilon)
+        #print(self.weight.data.shape)
+        #print('sum:',self.weight.data[:,0,0].sum())
         #self.weight.data.constant_(1/self.N)
         #nn.init.constant_(self.weight, 1/self.in_channels)
 
@@ -162,12 +167,14 @@ class TTConv(nn.Module):
             stacked_core_list.append(torch.stack(temp_list,dim=0))
         #stacked_core_list will be [stacked_1,stacked_2,stracked_3,stracked_4]
 
-        #check duplication: not duplicate until here
-
         #apply logm
-        for i in range(1,self.ndims-1):
-            stacked_core_list[i] = 1/2*(stacked_core_list[i].transpose(2,4) - stacked_core_list[i])
-            #pdb.set_trace()
+        #Replace this by inverse cayley
+        # for i in range(1,self.ndims-1):
+        #     stacked_core_list[i] = 1/2*(stacked_core_list[i].transpose(2,4) - stacked_core_list[i])
+        #     #pdb.set_trace()
+        for core_iter in range(1,self.ndims-1):
+            for slice_iter in range(0,self.shape[core_iter]):
+                stacked_core_list[core_iter][:,:,:,slice_iter,:] = cayley(stacked_core_list[core_iter][:,:,:,slice_iter,:])
 
         out_slice_list = []
         cat_slice = []
@@ -198,6 +205,7 @@ class TTConv(nn.Module):
         #split along the out_channels dimension
         #splited_list is a list of tuple
         splited_list = [torch.split(curr_core,split_size_or_sections=1,dim=0) for curr_core in cat_slice]
+        #pdb.set_trace()
         re_organized_splited_list = []
         for iter in range(0,self.out_channels):
             temp = [torch.squeeze(i[iter],0) for i in splited_list]
@@ -347,10 +355,10 @@ class TTSolver(nn.Module):
                 #print('x_l shape:', x_l.shape)
             for i in range(1,self.iter_num):
                 if torch.norm(x_l) > self.epsilon:
-                    x_l = x_l - 1/L*t3.tt_dense_matmul(t3.tt_tt_mul(weight_t,self.weight),x_l.t()).transpose(0,1) + 1/L*t3.tt_dense_matmul(weight_t, x_t).transpose(0, 1) + self.bias
+                    x_l = x_l - 1/L*t3.tt_dense_matmul(t3.tt_tt_matmul(weight_t,self.weight),x_l.t()).transpose(0,1) + 1/L*t3.tt_dense_matmul(weight_t, x_t).transpose(0, 1) + self.bias
                 else:
                     print('activated!!!')
-                    x_l = x_l - 1/L*t3.tt_dense_matmul(t3.tt_tt_mul(weight_t,self.weight),x_l.t()).transpose(0,1) + 1/L*t3.tt_dense_matmul(weight_t, x_t).transpose(0, 1) + self.bias + S*torch.ones(self.out_features).to(x_t.device)
+                    x_l = x_l - 1/L*t3.tt_dense_matmul(t3.tt_tt_matmul(weight_t,self.weight),x_l.t()).transpose(0,1) + 1/L*t3.tt_dense_matmul(weight_t, x_t).transpose(0, 1) + self.bias + S*torch.ones(self.out_features).to(x_t.device)
             return x_l
 
 

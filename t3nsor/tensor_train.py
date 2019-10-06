@@ -105,7 +105,7 @@ class TensorTrain(object):
         new_cores = []
         for core in self.tt_cores:
             core = nn.Parameter(core)
-            core.is_tt = True                       #???
+            core.is_tt = True                       
             new_cores.append(core)
 
         tt_p = TensorTrain(new_cores, convert_to_tensors=False)

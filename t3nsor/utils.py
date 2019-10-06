@@ -7,7 +7,7 @@ import torch
 import t3nsor as t3
 from t3nsor import TensorTrainBatch
 from t3nsor import TensorTrain
-
+import pdb
 def tt_to_dense(input):
     return input.full()
 
@@ -45,36 +45,13 @@ def input_to_tt_tensor(input, settings):
             if settings.OTT:
                 tt_cores_curr += t3.tt_to_ott(t3.to_tt_tensor(input[batch_iter,num_c,:,:].view(settings.TT_SHAPE),max_tt_rank=settings.TT_RANK)).tt_cores
             else:
+                #pdb.set_trace()
                 tt_cores_curr += t3.to_tt_tensor(input[batch_iter,num_c,:,:].view(settings.TT_SHAPE),max_tt_rank=settings.TT_RANK).tt_cores
         tt_core_curr_unsq = [torch.unsqueeze(i,dim=0) for i in tt_cores_curr]
         for shift in range(1,5):
             tt_batch_cores_curr.append(torch.cat(tt_core_curr_unsq[shift-1:(settings.BATCH_SIZE-1)*4+shift:4],dim=0))
         input_tt.append(TensorTrainBatch(tt_batch_cores_curr))
     return input_tt
-
-    # tt_cores_1 = []
-    # tt_cores_2 = []
-    # tt_cores_3 = []
-    # tt_batch_cores_1 = []
-    # tt_batch_cores_2 = []
-    # tt_batch_cores_3 = []
-    # for i in range(0,settings.BATCH_SIZE):
-    #     tt_cores_1 += t3.tt_to_ott(t3.to_tt_tensor(input[i,0,:,:].view(settings.TT_SHAPE),max_tt_rank=settings.TT_RANK)).tt_cores
-    #     tt_cores_2 += t3.tt_to_ott(t3.to_tt_tensor(input[i,1,:,:].view(settings.TT_SHAPE),max_tt_rank=settings.TT_RANK)).tt_cores
-    #     tt_cores_3 += t3.tt_to_ott(t3.to_tt_tensor(input[i,2,:,:].view(settings.TT_SHAPE),max_tt_rank=settings.TT_RANK)).tt_cores
-    #
-    #  #unsqueeze
-    # tt_core_1_unsq = [torch.unsqueeze(i,0) for i in tt_cores_1]
-    # tt_core_2_unsq = [torch.unsqueeze(i,0) for i in tt_cores_2]
-    # tt_core_3_unsq = [torch.unsqueeze(i,0) for i in tt_cores_3]
-    # #print('tt_core_1_unsq:',tt_core_1_unsq[0:(settings.BATCH_SIZE-1)*4+1:4])
-    # #print('shape:',[i.shape for i in tt_core_1_unsq[1:(settings.BATCH_SIZE-1)*4+2:4]])
-    # for shift in range(1,5):
-    #     tt_batch_cores_1.append(torch.cat(tt_core_1_unsq[shift-1:(settings.BATCH_SIZE-1)*4+shift:4],dim=0))
-    #     tt_batch_cores_2.append(torch.cat(tt_core_2_unsq[shift-1:(settings.BATCH_SIZE-1)*4+shift:4],dim=0))
-    #     tt_batch_cores_3.append(torch.cat(tt_core_3_unsq[shift-1:(settings.BATCH_SIZE-1)*4+shift:4],dim=0))
-    #
-    # input_tt = [TensorTrainBatch(tt_batch_cores_1),TensorTrainBatch(tt_batch_cores_2),TensorTrainBatch(tt_batch_cores_3)]
 
 
 def b_inv33(b_mat):
@@ -142,6 +119,8 @@ def b_inv(b_mat):
 
 
 #shape of t: objk [out_channels,batch_size,r_1,r_2]
+#Q = (I-A)*inv(I+A)
+#inverse cayley: A = (I-Q)*inv(I+Q)
 def cayley(t,gpu=True):
     if gpu:
         device = torch.device('cuda:0')
@@ -153,8 +132,10 @@ def cayley(t,gpu=True):
         #for b in range(0,t.shape[1]):
         #    t[o,b,:,:] = torch.matmul( torch.eye(t.shape[2],t.shape[3]).to(device) - t[o,b,:,:] , torch.inverse(torch.eye(t.shape[2],t.shape[3]).to(device) + t[o,b,:,:]) )
         batch_identity = torch.unsqueeze(torch.eye(t.shape[2],t.shape[3]),0).repeat(t.shape[1],1,1).to(device)
+        #The matrix multiplication is always done with using the last two dimensions. All the ones before are considered as batch.
         t[o,:,:,:] = torch.matmul(batch_identity-t[o,:,:,:],torch.inverse(batch_identity+t[o,:,:,:]))
     return t
+
 
 MODES = ['ascending', 'descending', 'mixed']
 CRITERIONS = ['entropy', 'var']
