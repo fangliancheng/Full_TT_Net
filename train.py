@@ -11,7 +11,6 @@ from t3nsor import TensorTrainBatch
 from t3nsor import TensorTrain
 from torch import autograd
 import torch.nn as nn
-#torch.set_default_tensor_type(torch.cuda.FloatTensor)
 import pdb
 
 parser = argparse.ArgumentParser(description='PyTorch')
@@ -34,26 +33,25 @@ settings = edict.EasyDict({
     "WORKERS" : 12,
     "BATCH_SIZE" : 128,
     "PRINT_FEQ" : 10,
-    "LR" : 0.1,
+    "LR" : 0.05,
     "EPOCHS" : 45,
     "CLIP_GRAD": 0,
     "ITERATE_NUM":6,
-    "TT_SHAPE":[4,8,4,4],
-    "TT_MATRIX_SHAPE":[None,[4,8,4,4]],
+    "TT_SHAPE": SHAPE_DICT[args.arch],
+    #"TT_SHAPE": [4,8,4,8], #Shpae of Cifar 10 data is 32*32
+    #"TT_SHAPE_512":[4,8,4,4],   #Output shape of ResNet 18 pretrained network(drop the last classification layer) is dim 512
+    "TT_MATRIX_SHAPE":[None,[4,8,4,4]], #Linear transformation in TT
     "TT_RANK": 4,
-    "FEATURE_EXTRACT":'cnn',
-    "OTT": False,
-    "BENCHMARK": False,
+    "FEATURE_EXTRACT": EXTRACT_DICT[args.arch],
+    #"FEATURE_EXTRACT":'tt', #or cnn
+    "OTT": True,
+    "BENCHMARK": False, #put a trainable fc layer under a untrainable pretrained ResNet18
 })
 
 if settings.GPU:
     device = torch.device('cuda:0')
 else:
     device = torch.device('cpu')
-
-# import os
-# os.environ['CUDA_DEVICE_ORDER']='PCI_BUS_ID'
-# os.environ['CUDA_VISIBLE_DEVICES']='1'
 
 settings.OUTPUT_FOLDER = "result/pytorch_{}_{}_{}".format(args.arch, args.mark, args.dataset)
 snapshot_dir = dir(os.path.join(settings.OUTPUT_FOLDER, 'snapshot'))
@@ -90,13 +88,6 @@ def train(model, train_loader, val_loader, dir=None):
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
 
-    # def move_buffer_to_gpu(optimizer):
-    #     for p in optimizer.state.keys():
-    #         print('move working!!!')
-    #         param_state = optimizer.state[p]
-    #         buf = param_state["momentum_buffer"]
-    #         param_state["momentum_buffer"] = buf.cuda()  # move buf to device
-
     for epoch in range(epoch_cur+1, settings.EPOCHS):
         adjust_learning_rate(optimizer, epoch)
 
@@ -105,28 +96,29 @@ def train(model, train_loader, val_loader, dir=None):
         losses = AverageMeter()
         top1 = AverageMeter()
         top5 = AverageMeter()
-        batch_time = AverageMeter()
+        batch_time = AverageMeter() #batch_time = data_time + forward_time + backward_time
         data_time = AverageMeter()
+        forward_time = AverageMeter()
         end = time.time()
 
-        # if epoch == 2:
-        #     p()
         for batch_idx, (input, target) in enumerate(train_loader):
             if settings.GPU:
                 target = target.to(device=device)
                 input = input.to(device=device)
 
             if settings.FEATURE_EXTRACT == 'tt':
-                input_tt = t3.input_to_tt(input,settings)
+                input_tt = t3.input_to_tt_tensor(input,settings)
 
             data_time.update(time.time() - end)
-
+            #for forward time
+            end_new = time.time()
             # compute output
             with autograd.detect_anomaly():
                 if settings.FEATURE_EXTRACT == 'tt':
                     output = model(input_tt)
                 else:
                     output = model(input)
+                forward_time.update(time.time() - end_new)
                 loss = criterion(output, target)
                 #pdb.set_trace()
                 if loss > 10:
@@ -161,12 +153,13 @@ def train(model, train_loader, val_loader, dir=None):
 
             if batch_idx % settings.PRINT_FEQ == 0:
                 print('Train: [{0}/{1}]\t'
+                      'Forward {forward_time.val:.3f} ({forward_time.avg:.3f})\t'
                       'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                       'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
                       'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                       'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
                       'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                    batch_idx, len(train_loader), batch_time=batch_time, data_time=data_time, loss=losses,
+                    batch_idx, len(train_loader), forward_time=forward_time,batch_time=batch_time, data_time=data_time, loss=losses,
                     top1=top1, top5=top5))
         print(' * TIMESTAMP {}'.format(time.strftime("%Y-%m-%d-%H:%M")))
         print(' * TRAIN Prec@1 {top1.avg:.3f} Prec@5 {top5.avg:.3f}'.format(top1=top1, top5=top5))

@@ -34,9 +34,20 @@ MODEL_DICT = {
      'pre_cnn': pre_mani_net,
      'linear': pre_FTT_Net,
  }
+
+SHAPE_DICT = {
+    'pre_cnn': [4,8,4,4],
+    'manifold_net': [4,8,4,8],
+ }
+
+EXTRACT_DICT = {
+    'pre_cnn': 'cnn',
+    'manifold_net': 'tt',
+    'linear': 'cnn',
+}
+
 def skew_sym_part(m):
     return 1/2 * (m.t() - m)
-
 
 def to_list(tuple):
     return [i for i in tuple]

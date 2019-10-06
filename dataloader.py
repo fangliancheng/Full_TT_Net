@@ -64,22 +64,37 @@ def cifar_loader(settings, dir, batch_size=None, shuffle=False, data_augment=Fal
     if batch_size is None:
         batch_size = settings.BATCH_SIZE
 
-    #for minist dataset
     kwargs = {'num_workers': settings.WORKERS, 'pin_memory': True} if settings.GPU else {}
-    transform_train = transforms.Compose(
-        [#transforms.Resize(size=(64,64)),
-         #settings.IMG_SIZE = 224
-         transforms.RandomResizedCrop(settings.IMG_SIZE),
-         transforms.ToTensor(),
-         transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5))
-         ])
-    transform_val = transforms.Compose(
-        [transforms.Resize(settings.IMG_SIZE),
-         #settings.IMG_SIZE = 224
-         #transforms.RandomResizedCrop(settings.IMG_SIZE),
-         transforms.ToTensor(),
-         transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5))
-         ])
+    if settings.FEATURE_EXTRACT == 'tt':
+        transform_train = transforms.Compose(
+            [#transforms.Resize(size=(64,64)),
+             #settings.IMG_SIZE = 224
+             #transforms.RandomResizedCrop(settings.IMG_SIZE),
+             transforms.ToTensor(),
+             transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5))
+             ])
+        transform_val = transforms.Compose(
+            [#transforms.Resize(settings.IMG_SIZE),
+             #settings.IMG_SIZE = 224
+             #transforms.RandomResizedCrop(settings.IMG_SIZE),
+             transforms.ToTensor(),
+             transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5))
+             ])
+    if settings.FEATURE_EXTRACT == 'cnn':
+            transform_train = transforms.Compose(
+                [#transforms.Resize(size=(64,64)),
+                 #settings.IMG_SIZE = 224
+                 transforms.RandomResizedCrop(settings.IMG_SIZE),
+                 transforms.ToTensor(),
+                 transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5))
+                 ])
+            transform_val = transforms.Compose(
+                [transforms.Resize(settings.IMG_SIZE),
+                 #settings.IMG_SIZE = 224
+                 #transforms.RandomResizedCrop(settings.IMG_SIZE),
+                 transforms.ToTensor(),
+                 transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5))
+                 ])
     if dir == 'train':
         trainset = torchvision.datasets.CIFAR10(root='./data', train=True,
                                                 download=True, transform=transform_train)
