@@ -41,6 +41,7 @@ class pre_mani_net(nn.Module):
         x = self.fc4(x)
         return F.log_softmax(x, dim=1)
 
+#add batchnorm
 class manifold_Net(nn.Module):
     def __init__(self,settings):
         super(manifold_Net, self).__init__()
@@ -50,14 +51,14 @@ class manifold_Net(nn.Module):
         # self.pool = nn.MaxPool2d(2,2)
         # self.conv2 = nn.Conv2d(6,16,5)
         # self.conv3 = nn.Conv2d(16,3,5)
-        self.fc1 = t3.TTFC(settings.TT_SHAPE,tt_rank=settings.TT_RANK,in_channels=16)
+        self.fc1 = t3.TTFC(settings.TT_SHAPE,tt_rank=settings.TT_RANK,in_channels=10)
         #self.solver1 = t3.TTSolver(in_features=16,out_features=120)
         #self.solver2= t3.TTSolver(in_features=120,out_features=84)
-        self.fc2 = t3.TTLinear(in_features=16,out_features=16)
-        self.relu_ip1 = nn.ReLU(inplace=True)
-        self.fc3 = t3.TTLinear(in_features=16,out_features=84)
-        self.relu_ip2 = nn.ReLU(inplace=True)
-        self.fc4 = nn.Linear(84,10)
+        #self.fc2 = t3.TTLinear(in_features=84,out_features=16)
+        #self.relu_ip1 = nn.ReLU(inplace=True)
+        #self.fc3 = t3.TTLinear(in_features=16,out_features=84)
+        #self.relu_ip2 = nn.ReLU(inplace=True)
+        #self.fc4 = nn.Linear(84,10)
 
     def forward(self, x):
         x = self.conv1(x)
@@ -68,11 +69,11 @@ class manifold_Net(nn.Module):
         x = self.fc1(x)
         #x = self.solver1(x)
         #x = self.solver2(x)
-        x = self.fc2(x)
-        x = self.relu_ip1(x)
-        x = self.fc3(x)
-        x = self.relu_ip2(x)
-        x = self.fc4(x)
+        #x = self.fc2(x)
+        #x = self.relu_ip1(x)
+        #x = self.fc3(x)
+        #x = self.relu_ip2(x)
+        #x = self.fc4(x)
         return F.log_softmax(x, dim=1)
 
 
