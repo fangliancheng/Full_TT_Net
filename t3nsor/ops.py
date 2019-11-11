@@ -11,6 +11,14 @@ def cayley(t):
         t[i,:,:] = torch.matmul( torch.eye(t.shape[1],t.shape[2]) - t[i,:,:] , torch.inverse(torch.eye(t.shape[1],t.shape[2]) + t[i,:,:]) )
     return t
 
+#TODO: multiplication with a scalar
+def r_tt_mul(tt,r):
+    first_core = r*tt.tt_cores[0]
+    new_cores = []
+    new_cores.append(first_core)
+    for i in range(1,tt.ndims):
+        new_cores.append(tt.tt_cores[i])
+    return TensorTrain(new_cores)
 
 #dot product, will be called to compute frobenius_norm
 def tt_tt_flat_inner(tt_a, tt_b):

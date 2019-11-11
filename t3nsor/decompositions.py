@@ -20,7 +20,8 @@ def tt_to_ott(tt):
     #last core, keep samp
     #pdb.set_trace()
     ott_cores.append(tt_cores[ndims-1])
-    return TensorTrain(ott_cores,convert_to_tensors=False)
+    return TensorTrain(ott_cores, convert_to_tensors=False)
+
 
 def to_tt_tensor(tens, max_tt_rank=10, epsilon=None):
 

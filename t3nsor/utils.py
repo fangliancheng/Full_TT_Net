@@ -8,11 +8,14 @@ import t3nsor as t3
 from t3nsor import TensorTrainBatch
 from t3nsor import TensorTrain
 import pdb
+
+
 def tt_to_dense(input):
     return input.full()
 
-#GOAL: convert a [batch_size,1,512] tensor to TensorTrainBatch_matrix
-def input_to_tt_matrix(input,settings):
+
+#GOAL: convert a [batch_size,1,512] tensor to TensorTrainBatch_matrix, 1 means output will be one TensorTrainBatch
+def input_to_tt_matrix(input, settings):
     num_channels = input.shape[1]
     input_tt = []
     for num_c in range(num_channels):
@@ -21,21 +24,21 @@ def input_to_tt_matrix(input,settings):
 
         for batch_iter in range(input.shape[0]):
             #settings.TT_MATRIX_SHAPE = [None,[4,8,4,4]]
-            tt_cores_curr += t3.to_tt_matrix(input[batch_iter,num_c,:],shape=settings.TT_MATRIX_SHAPE,max_tt_rank=settings.TT_RANK).tt_cores
+            tt_cores_curr += t3.to_tt_matrix(input[batch_iter, num_c, :], shape=settings.TT_MATRIX_SHAPE, max_tt_rank=settings.TT_RANK).tt_cores
 
-        tt_core_curr_unsq = [torch.unsqueeze(i,dim=0) for i in tt_cores_curr]
-        for shift in range(1,5):
+        tt_core_curr_unsq = [torch.unsqueeze(i, dim=0) for i in tt_cores_curr]
+        for shift in range(1, 5):
             tt_batch_cores_curr.append(torch.cat(tt_core_curr_unsq[shift-1:(settings.BATCH_SIZE-1)*4+shift:4],dim=0))
         input_tt.append(TensorTrainBatch(tt_batch_cores_curr))
     return input_tt
 
 
-def input_to_tt_tensor(input, settings):
+def input_to_tt_tensor(inp, settings):
     #input shape: batch_size, num_channels, size_1, size_2
-    #convert input from dense format to TT format, specificaly, TensorTrainBatch
-    #TODO: Make sure cores in GPU?
+    #convert input from dense format to TT format, specifically, TensorTrainBatch
     #input shape: [batch_size 3 32 32]
-    num_channels = input.shape[1]
+    assert(len(inp.shape) == 4)
+    num_channels = inp.shape[1]
     input_tt = []
     for num_c in range(num_channels):
         tt_cores_curr = []
@@ -43,15 +46,23 @@ def input_to_tt_tensor(input, settings):
 
         for batch_iter in range(settings.BATCH_SIZE):
             if settings.OTT:
-                tt_cores_curr += t3.tt_to_ott(t3.to_tt_tensor(input[batch_iter,num_c,:,:].view(settings.TT_SHAPE),max_tt_rank=settings.TT_RANK)).tt_cores
+                tt_cores_curr += t3.tt_to_ott(t3.to_tt_tensor(inp[batch_iter, num_c, :, :].view(settings.TT_SHAPE), max_tt_rank=settings.TT_RANK)).tt_cores
             else:
                 #pdb.set_trace()
-                tt_cores_curr += t3.to_tt_tensor(input[batch_iter,num_c,:,:].view(settings.TT_SHAPE),max_tt_rank=settings.TT_RANK).tt_cores
-        tt_core_curr_unsq = [torch.unsqueeze(i,dim=0) for i in tt_cores_curr]
-        for shift in range(1,5):
-            tt_batch_cores_curr.append(torch.cat(tt_core_curr_unsq[shift-1:(settings.BATCH_SIZE-1)*4+shift:4],dim=0))
+                tt_cores_curr += t3.to_tt_tensor(inp[batch_iter, num_c, :, :].view(settings.TT_SHAPE), max_tt_rank=settings.TT_RANK).tt_cores
+
+        tt_core_curr_unsq = [torch.unsqueeze(i, dim=0) for i in tt_cores_curr]
+        assert(len(settings.TT_SHAPE) == 4)
+        for shift in range(1, 5):
+            tt_batch_cores_curr.append(torch.cat(tuple(tt_core_curr_unsq[shift-1:(settings.BATCH_SIZE-1)*4+shift:4]), dim=0))
         input_tt.append(TensorTrainBatch(tt_batch_cores_curr))
+    pdb.set_trace()
     return input_tt
+
+
+#use after input_to_tt_tensor, output: tt_rgb 'image'
+# def tt_rgb_image(ttbatch_list, settings):
+#     return
 
 
 def b_inv33(b_mat):
@@ -247,6 +258,7 @@ def suggest_shape(n, d=3, criterion='entropy', mode='ascending'):
     factors = auto_shape(int(_roundup(n, i)), d=d, mode=mode, criterion=criterion)
     return factors
 
+
 def svd_fix(x):
     n = x.shape[0]
     m = x.shape[1]
@@ -257,8 +269,9 @@ def svd_fix(x):
     else:
         u, s, v = torch.svd(x.t())
         v, u = u, v
-
+    #pdb.set_trace()
     return u, s, v
+
 
 def ind2sub(siz, idx):
     n = len(siz)

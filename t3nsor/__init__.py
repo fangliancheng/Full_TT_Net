@@ -25,7 +25,9 @@ from t3nsor.layers import TTConv
 from t3nsor.layers import TTLinear
 from t3nsor.layers import TTSolver
 from t3nsor.layers import TTFC
-from t3nsor.layers import layer_to_tt_tensor
-from t3nsor.layers import layer_to_tt_matrix
+#from t3nsor.layers import layer_to_tt_tensor
+#from t3nsor.layers import layer_to_tt_matrix
+from t3nsor.layers import core_wise_linear
+from t3nsor.layers import layer_to_tt_tensor_learnable
 from t3nsor.initializers import matrix_zeros
 from t3nsor.initializers import glorot_initializer

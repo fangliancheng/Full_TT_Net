@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import torch.nn as nn
-
+import pdb
 
 class TensorTrain(object):
     def __init__(self, tt_cores, shape=None, tt_ranks=None, ott=False, convert_to_tensors=True):
@@ -105,7 +105,7 @@ class TensorTrain(object):
         new_cores = []
         for core in self.tt_cores:
             core = nn.Parameter(core)
-            core.is_tt = True                       
+            #core.is_tt = True                       
             new_cores.append(core)
 
         tt_p = TensorTrain(new_cores, convert_to_tensors=False)
@@ -126,7 +126,9 @@ class TensorTrain(object):
 
         for i in range(1, num_dims):
             res = res.view(-1, ranks[i])
-            curr_core = self.tt_cores[i].view(ranks[i], -1)
+            #pdb.set_trace()
+            #add continguous
+            curr_core = self.tt_cores[i].contiguous().view(ranks[i], -1)
             res = torch.matmul(res, curr_core)
 
         if self.is_tt_matrix:
