@@ -593,13 +593,13 @@ class FTT_Solver(nn.Module):
     def __init__(self,
                 in_features=None,
                 out_features=None,
-                bias=False,
+                bias=True,
                 init=None,
                 shape=None,
                 auto_shapes=False,
                 d=3,
                 tt_rank=8,
-                iter_num=4,
+                iter_num=1,
                 l=1,
                 s=-1,
                 epsilon=1,
@@ -640,10 +640,9 @@ class FTT_Solver(nn.Module):
         self.out_features = out_features
 
         if bias:
-            self.bias = torch.nn.Parameter(1e-2 * torch.ones(out_features))
-            shape_
-            init_bias = t3.glorot_initializer(shape[1])
-            self.bias =
+            #self.bias = torch.nn.Parameter(1e-2 * torch.ones(out_features))
+            init_bias = t3.glorot_initializer(shape=[None, self.shape[1]])
+            self.bias = init_bias.to_parameter()
         else:
             self.register_parameter('bias', None)
 
@@ -654,11 +653,21 @@ class FTT_Solver(nn.Module):
             L = self.L
             S = self.S
             if self.iter_num == 1:
-                if t3.frobenius_norm_squared(x) > self.epsilon:
-                    return 1/L*(t3.tt_tt_matmul(x, self.weight)+self.bias)
-                else:
-                    return 1/L*(t3.tt_tt_matmul(x, self.weight)+self.bias) + S*torch.ones(self.out_features)
+                f_norm = t3.frobenius_norm_squared(x)
+                batch_size = int(f_norm)
+                tt_list = []
+                for idx in range(batch_size):
+                    if f_norm[idx] > self.epsilon:
+                        output_tt = t3.utils.scalar_tt_mul(t3.add(t3.tt_tt_matmul(t3.utils.get_element_from_batch(x, idx), self.weight), self.bias), 1/L)
+                        rounded_output_tt = t3.round_tt(output_tt, self.tt_rank)
+                        tt_list.append(rounded_output_tt)
+                    else:
+                        out_put_tt = t3.add(t3.utils.scalar_tt_mul(t3.add(t3.tt_tt_matmul(t3.utils.get_element_from_batch(x, idx), self.weight), self.bias), 1/L), t3.utils.scalar_tt_mul(t3.tensor_ones([None, self.shape[1]]),S))
+                        rounded_output_tt = t3.round_tt(output_tt, self.tt_rank)
+                        tt_list.append(rounded_output_tt)
+                return t3.utils.tt_batch_from_list_of_tt(tt_list)
             else:
+                raise NotImplementedError
             # iter_num > 1
                 pdb.set_trace()
                 if t3.frobenius_norm_squared(x) > self.epsilon:

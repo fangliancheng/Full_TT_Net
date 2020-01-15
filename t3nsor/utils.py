@@ -385,3 +385,101 @@ def ind2sub(siz, idx):
         idx = torch.fmod(idx, k[i])
 
     return torch.stack(subs[::-1], dim=1)
+
+
+def is_batch_broadcasting_possible(tt_a, tt_b):
+  """Check that the batch broadcasting possible for the given batch sizes.
+  Returns true if the batch sizes are the same or if one of them is 1.
+  If the batch size that is supposed to be 1 is not known on compilation stage,
+  broadcasting is not allowed.
+  Args:
+    tt_a: TensorTrain or TensorTrainBatch
+    tt_b: TensorTrain or TensorTrainBatch
+  Returns:
+    Bool
+  """
+  try:
+    if tt_a.batch_size is None and tt_b.batch_size is None:
+      # If both batch sizes are not available on the compilation stage,
+      # we cannot say if broadcasting is possible so we will not allow it.
+      return False
+    if tt_a.batch_size == tt_b.batch_size:
+      return True
+    if tt_a.batch_size == 1 or tt_b.batch_size == 1:
+      return True
+    return False
+  except AttributeError:
+    # One or both of the arguments are not batch tensor, but single TT tensors.
+    # In this case broadcasting is always possible.
+    return True
+
+#opposite to expand_batch_dim
+def squeeze_batch_dim(tt, name='t3f_squeeze_batch_dim'):
+  """Converts batch size 1 TensorTrainBatch into TensorTrain.
+  Args:
+    tt: TensorTrain or TensorTrainBatch.
+    name: string, name of the Op.
+  Returns:
+    TensorTrain if the input is a TensorTrainBatch with batch_size == 1 (known
+      at compilation stage) or a TensorTrain.
+    TensorTrainBatch otherwise.
+    """
+    try:
+      if tt.batch_size == 1:
+          #Liancheng
+          tt_cores = []
+          for core_idx in range(tt.ndims):
+              curr_core = torch.squeeze(tt.tt_cores[core_idx], dim=0)
+              tt_cores.append(curr_core)
+        return t3.TensorTrain(tt_cores)
+      else:
+        return tt
+    except AttributeError:
+      # tt object does not have attribute batch_size, probably already
+      # a TensorTrain.
+      return tt
+
+
+def tt_batch_from_list_of_tt(tt_list):
+    expanded_tt_list = [expand_batch_dim(tt) for tt in tt_list]
+    tt_batch_cores = []
+    for core_idx in range(tt_list[0].ndims):
+        for tt_idx in range(len(tt_list)):
+            if tt_idx = 0
+                cumu_tt_core = expand_tt_list[tt_idx].tt_cores[core_idx]
+            else:
+                cumu_tt_core = torch.cat((cumu_tt_core, expand_tt_list[tt_idx].tt_cores[core_idx]), 0)
+        tt_batch_cores.append(cumu_tt_core)
+    return TensorTrainBatch(tt_batch_cores)
+
+
+def expand_batch_dim(tt, name='t3f_expand_batch_dim'):
+  """Creates a 1-element TensorTrainBatch from a TensorTrain.
+  Args:
+    tt: TensorTrain or TensorTrainBatch.
+    name: string, name of the Op.
+  Returns:
+    TensorTrainBatch
+  """
+
+if hasattr(tt, 'batch_size'):
+    return tt
+else:
+    tt_cores = []
+    for core_idx in range(tt.ndims):
+        tt_cores.append(torch.unsqueeze(tt.tt_cores[core_idx], dim=0))
+    return TensorTrainBatch(tt_cores)
+
+
+def get_element_from_batch(tt_batch, idx):
+    """get d th tt element from tt_batch"""
+    tt_cores = []
+    if not hasattr(tt_batch, 'batch_size'):
+        print('input not a tt batch!')
+    if tt_batch.is_tt_matrix:
+        for core_idx in range(tt_batch.ndims):
+            tt_cores.append(tt_batch.tt_cores[core_idx][idx,:,:,:,:])
+    else:
+        for core_idx in range(tt_batch.ndims):
+            tt_cores.append(tt_batch.tt_cores[core_idx][idx,:,:,:])
+    return TensorTrain(tt_cores)

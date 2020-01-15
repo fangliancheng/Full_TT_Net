@@ -323,7 +323,7 @@ def random_matrix(shape, tt_rank=2, mean=0., stddev=1.,
 
 
 
-def glorot_initializer(shape, tt_rank=2, dtype=torch.float32):
+def glorot_initializer(shape, tt_rank=4, dtype=torch.float32):
     shape = list(shape)
     # In case shape represents a vector, e.g. [None, [2, 2, 2]]
     if shape[0] is None:

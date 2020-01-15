@@ -16,6 +16,7 @@ from t3nsor.ops import tt_tt_matmul
 from t3nsor.ops import transpose
 from t3nsor.ops import multiply
 from t3nsor.ops import add
+from t3nsor.ops import scalar_tt_mul
 from t3nsor.utils import ind2sub
 from t3nsor.utils import input_to_tt_tensor
 from t3nsor.utils import input_to_tt_matrix

@@ -12,7 +12,7 @@ def cayley(t):
     return t
 
 #TODO: multiplication with a scalar
-def r_tt_mul(tt,r):
+def scalar_tt_mul(tt,r):
     first_core = r*tt.tt_cores[0]
     new_cores = []
     new_cores.append(first_core)
@@ -207,28 +207,28 @@ def _add_batch_tensor_cores(tt_a, tt_b):
         batch_size = tt_b.batch_size
     else:
         batch_size = tt_a.batch_size
-    tt_a = shapes.expand_batch_dim(tt_a)
-    tt_b = shapes.expand_batch_dim(tt_b)
+    tt_a = t3.utils.expand_batch_dim(tt_a)
+    tt_b = t3.utils.expand_batch_dim(tt_b)
     tt_cores = []
     for core_idx in range(ndims):
         a_core = tt_a.tt_cores[core_idx]
         if tt_a.batch_size == 1:
-            a_core = tf.tile(a_core, (batch_size, 1, 1, 1))
+            a_core = a_core.repeat(batch_size, 1, 1, 1)
         b_core = tt_b.tt_cores[core_idx]
         if tt_b.batch_size == 1:
-            b_core = tf.tile(b_core, (batch_size, 1, 1, 1))
+            b_core = b_core.repeat(batch_size, 1, 1, 1)
         if core_idx == 0:
-            curr_core = tf.concat((a_core, b_core), axis=3)
+            curr_core = torch.cat((a_core, b_core), dim=3)
         elif core_idx == ndims - 1:
-            curr_core = tf.concat((a_core, b_core), axis=1)
+            curr_core = torch.cat((a_core, b_core), dim=1)
         else:
-            upper_zeros = tf.zeros((batch_size, a_ranks[core_idx], shape[0][core_idx],
+            upper_zeros = torch.zeros((batch_size, a_ranks[core_idx], shape[0][core_idx],
                               b_ranks[core_idx + 1]), dtype)
-            lower_zeros = tf.zeros((batch_size, b_ranks[core_idx], shape[0][core_idx],
+            lower_zeros = torch.zeros((batch_size, b_ranks[core_idx], shape[0][core_idx],
                               a_ranks[core_idx + 1]), dtype)
-            upper = tf.concat((a_core, upper_zeros), axis=3)
-            lower = tf.concat((lower_zeros, b_core), axis=3)
-            curr_core = tf.concat((upper, lower), axis=1)
+            upper = torch.cat((a_core, upper_zeros), dim=3)
+            lower = torch.cat((lower_zeros, b_core), dim=3)
+            curr_core = torch.cat((upper, lower), dim=1)
         tt_cores.append(curr_core)
     return tt_cores, batch_size
 
@@ -237,27 +237,27 @@ def _add_matrix_cores(tt_a, tt_b):
   """Internal function to be called from add for two TT-matrices.
   Does the actual assembling of the TT-cores to add two TT-matrices.
   """
-  ndims = tt_a.ndims()
+  ndims = tt_a.ndims
   dtype = tt_a.dtype
-  shape = shapes.lazy_raw_shape(tt_a)
-  a_ranks = shapes.lazy_tt_ranks(tt_a)
-  b_ranks = shapes.lazy_tt_ranks(tt_b)
+  shape = tt_a.raw_shape
+  a_ranks = tt_a.tt_ranks
+  b_ranks = tt_b.tt_ranks
   tt_cores = []
   for core_idx in range(ndims):
     a_core = tt_a.tt_cores[core_idx]
     b_core = tt_b.tt_cores[core_idx]
     if core_idx == 0:
-      curr_core = tf.concat((a_core, b_core), axis=3)
+      curr_core = torch.cat((a_core, b_core), dim=3)
     elif core_idx == ndims - 1:
-      curr_core = tf.concat((a_core, b_core), axis=0)
+      curr_core = torch.cat((a_core, b_core), dim=0)
     else:
-      upper_zeros = tf.zeros((a_ranks[core_idx], shape[0][core_idx],
+      upper_zeros = torch.zeros((a_ranks[core_idx], shape[0][core_idx],
                               shape[1][core_idx], b_ranks[core_idx + 1]), dtype)
-      lower_zeros = tf.zeros((b_ranks[core_idx], shape[0][core_idx],
+      lower_zeros = torch.zeros((b_ranks[core_idx], shape[0][core_idx],
                               shape[1][core_idx], a_ranks[core_idx + 1]), dtype)
-      upper = tf.concat((a_core, upper_zeros), axis=3)
-      lower = tf.concat((lower_zeros, b_core), axis=3)
-      curr_core = tf.concat((upper, lower), axis=0)
+      upper = torch.cat((a_core, upper_zeros), dim=3)
+      lower = torch.cat((lower_zeros, b_core), dim=3)
+      curr_core = torch.cat((upper, lower), dim=0)
     tt_cores.append(curr_core)
   return tt_cores
 
@@ -266,39 +266,39 @@ def _add_batch_matrix_cores(tt_a, tt_b):
   """Internal function to be called from add for two batches of TT-matrices.
   Does the actual assembling of the TT-cores to add two batches of TT-matrices.
   """
-  ndims = tt_a.ndims()
+  ndims = tt_a.ndims
   dtype = tt_a.dtype
-  shape = shapes.lazy_raw_shape(tt_a)
-  a_ranks = shapes.lazy_tt_ranks(tt_a)
-  b_ranks = shapes.lazy_tt_ranks(tt_b)
+  shape = tt_a.raw_shape
+  a_ranks = tt_a.tt_ranks
+  b_ranks = tt_b.tt_ranks
   if isinstance(tt_a, TensorTrainBatch) and tt_a.batch_size == 1:
     # We add 1 element batch tt_a to a batch_size element batch tt_b to get
     # the answer TensorTrainBatch of batch_size == tt_b.batch_size.
-    batch_size = shapes.lazy_batch_size(tt_b)
+    batch_size = tt_b.batch_size
   else:
-    batch_size = shapes.lazy_batch_size(tt_a)
-  tt_a = shapes.expand_batch_dim(tt_a)
-  tt_b = shapes.expand_batch_dim(tt_b)
+    batch_size = tt_a.batch_size
+  tt_a = t3.utils.expand_batch_dim(tt_a)
+  tt_b = t3.utils.expand_batch_dim(tt_b)
   tt_cores = []
   for core_idx in range(ndims):
     a_core = tt_a.tt_cores[core_idx]
     if tt_a.batch_size == 1:
-      a_core = tf.tile(a_core, (batch_size, 1, 1, 1, 1))
+      a_core = a_core.repeat(batch_size, 1, 1, 1, 1)
     b_core = tt_b.tt_cores[core_idx]
     if tt_b.batch_size == 1:
-      b_core = tf.tile(b_core, (batch_size, 1, 1, 1, 1))
+      b_core = b_core.repeat(batch_size, 1, 1, 1, 1)
     if core_idx == 0:
-      curr_core = tf.concat((a_core, b_core), axis=4)
+      curr_core = torch.cat((a_core, b_core), dim=4)
     elif core_idx == ndims - 1:
-      curr_core = tf.concat((a_core, b_core), axis=1)
+      curr_core = torch.cat((a_core, b_core), dim=1)
     else:
-      upper_zeros = tf.zeros((batch_size, a_ranks[core_idx], shape[0][core_idx],
+      upper_zeros = torch.zeros((batch_size, a_ranks[core_idx], shape[0][core_idx],
                               shape[1][core_idx], b_ranks[core_idx + 1]), dtype)
-      lower_zeros = tf.zeros((batch_size, b_ranks[core_idx], shape[0][core_idx],
+      lower_zeros = torch.zeros((batch_size, b_ranks[core_idx], shape[0][core_idx],
                               shape[1][core_idx], a_ranks[core_idx + 1]), dtype)
-      upper = tf.concat((a_core, upper_zeros), axis=4)
-      lower = tf.concat((lower_zeros, b_core), axis=4)
-      curr_core = tf.concat((upper, lower), axis=1)
+      upper = torch.cat((a_core, upper_zeros), dim=4)
+      lower = torch.cat((lower_zeros, b_core), dim=4)
+      curr_core = torch.cat((upper, lower), dim=1)
     tt_cores.append(curr_core)
   return tt_cores, batch_size
 
@@ -321,19 +321,18 @@ def add(tt_a, tt_b, name='t3f_add'):
   Raises
     ValueError if the arguments shapes do not coincide
   """
-  ndims = tt_a.ndims()
-  if tt_a.is_tt_matrix() != tt_b.is_tt_matrix():
-    raise ValueError('The arguments should be both TT-tensors or both '
+    ndims = tt_a.ndims
+    if tt_a.is_tt_matrix() != tt_b.is_tt_matrix():
+        raise ValueError('The arguments should be both TT-tensors or both '
                      'TT-matrices')
 
-  if tt_a.get_raw_shape() != tt_b.get_raw_shape():
-    raise ValueError('The arguments should have the same shape.')
+    if tt_a.raw_shape != tt_b.raw_shape:
+        raise ValueError('The arguments should have the same shape.')
 
-  if not shapes.is_batch_broadcasting_possible(tt_a, tt_b):
-    raise ValueError('The batch sizes are different and not 1, broadcasting is '
+    if not t3.utils.is_batch_broadcasting_possible(tt_a, tt_b):
+        raise ValueError('The batch sizes are different and not 1, broadcasting is '
                      'not available.')
 
-  with tf.name_scope(name, values=tt_a.tt_cores+tt_b.tt_cores):
     is_a_batch = isinstance(tt_a, TensorTrainBatch)
     is_b_batch = isinstance(tt_b, TensorTrainBatch)
     is_batch_case = is_a_batch or is_b_batch
@@ -350,16 +349,15 @@ def add(tt_a, tt_b, name='t3f_add'):
         tt_cores = _add_tensor_cores(tt_a, tt_b)
 
     out_ranks = [1]
-    static_a_ranks = tt_a.get_tt_ranks()
-    static_b_ranks = tt_b.get_tt_ranks()
+    static_a_ranks = tt_a.tt_ranks
+    static_b_ranks = tt_b.tt_ranks
     for core_idx in range(1, ndims):
       out_ranks.append(static_a_ranks[core_idx] + static_b_ranks[core_idx])
     out_ranks.append(1)
     if is_batch_case:
-      return TensorTrainBatch(tt_cores, tt_a.get_raw_shape(), out_ranks,
-                              batch_size)
+      return TensorTrainBatch(tt_cores, tt_a.raw_shape, out_ranks,batch_size)
     else:
-      return TensorTrain(tt_cores, tt_a.get_raw_shape(), out_ranks)
+      return TensorTrain(tt_cores, tt_a.raw_shape, out_ranks)
 
 
 
@@ -426,18 +424,18 @@ def tt_tt_matmul(tt_matrix_a, tt_matrix_b, convert_to_tensors=False):
   #       not tt_matrix_b.is_tt_matrix():
   #       raise ValueError('Arguments should be TT-matrices')
   #
-  #   if not shapes.is_batch_broadcasting_possible(tt_matrix_a, tt_matrix_b):
-  #       raise ValueError('The batch sizes are different and not 1, broadcasting is '
-  #                    'not available.')
+    if not t3.utils.is_batch_broadcasting_possible(tt_matrix_a, tt_matrix_b):
+        raise ValueError('The batch sizes are different and not 1, broadcasting is '
+                     'not available.')
 
     ndims = tt_matrix_a.ndims
     if tt_matrix_b.ndims != ndims:
         raise ValueError('Arguments should have the same number of dimensions, '
                      'got %d and %d instead.' % (ndims, tt_matrix_b.ndims))
 
-    # Convert BatchSize 1 batch into TT object to simplify broadcasting.
-    # tt_matrix_a = shapes.squeeze_batch_dim(tt_matrix_a)
-    # tt_matrix_b = shapes.squeeze_batch_dim(tt_matrix_b)
+    #Convert BatchSize 1 batch into TT object to simplify broadcasting.
+    tt_matrix_a = t3.utils.squeeze_batch_dim(tt_matrix_a)
+    tt_matrix_b = t3.utils.squeeze_batch_dim(tt_matrix_b)
     is_a_batch = isinstance(tt_matrix_a, TensorTrainBatch)
     is_b_batch = isinstance(tt_matrix_b, TensorTrainBatch)
     is_res_batch = is_a_batch or is_b_batch
@@ -461,9 +459,6 @@ def tt_tt_matmul(tt_matrix_a, tt_matrix_b, convert_to_tensors=False):
     for core_idx in range(ndims):
         a_core = tt_matrix_a.tt_cores[core_idx]
         b_core = tt_matrix_b.tt_cores[core_idx]
-
-        # Liancheng
-        # a_core = a_core.to(b_core.device)
 
         curr_res_core = torch.einsum(einsum_str, a_core, b_core)
 
