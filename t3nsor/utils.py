@@ -6,12 +6,113 @@ from itertools import cycle, islice
 import torch
 import t3nsor as t3
 from t3nsor import TensorTrainBatch
+from dataloader import cifar_loader
 from t3nsor import TensorTrain
 import pdb
 
 
-def tt_to_dense(input):
-    return input.full()
+#construct sample covariance tensor and perform TT-SVD to get G_1,...,G_d
+#return: list of G_1,G_2,...G_d TT-cores
+def construct_sample_covariance_tensor(sample_mode, settings, mini_batch_input=None, mini_batch_target=None):
+    #Use curr_minibatch to construct sample covariance tensor
+    if sample_mode == 'curr_minibatch':
+        #mini_batch_input shape for CIFAR-10: [batch_size 3 32 32]
+        #pdb.set_trace()
+        # mini_batch_target = torch.FloatTensor(mini_batch_target)
+        # mini_batch_input = torch.FloatTensor(mini_batch_input)
+        sample_cov = 1/settings.BATCH_SIZE * torch.einsum('bclw,b->clw', mini_batch_input.float(), mini_batch_target.float())
+        #print('sample_cov shape:', sample_cov.shape) #should be [3,32,32]
+        return t3.to_tt_tensor(sample_cov.view([3, 4, 8, 4, 8]), max_tt_rank=settings.TT_RANK).tt_cores
+
+    # Use all training data to construct sample covariance tensor
+    else:
+        batch_size_cifar10 = 50000
+        train_loader = cifar_loader(settings, 'train', batch_size=batch_size_cifar10, shuffle=True, data_augment=True)
+        dataiter = iter(train_loader)
+        raw_images, labels = dataiter.next()
+
+        if settings.GPU:
+            raw_images = raw_images.to(torch.device('cuda'))
+            labels = labels.to(torch.device('cuda'))
+
+        sample_cov = 1/batch_size_cifar10 * torch.einsum('bclw,b->clw', raw_images.float(), labels.float())
+        #print('sample_cov shape:', sample_cov.shape)
+        return t3.to_tt_tensor(sample_cov.view(3, 4, 8, 4, 8), max_tt_rank=settings.TT_RANK).tt_cores
+
+
+#apply importance sketching to perform dimension reduction
+#return list of dimension-reduced covariates, *have same dimension as TT cores*
+def important_sketching(mini_batch, cov_tt_cores, settings):
+    mini_batch = mini_batch.view(settings.BATCH_SIZE, 3, 4, 8, 4, 8)
+    # assert(cov_tt_cores[0].shape[1] == 3)
+    # assert(cov_tt_cores[1].shape[0] == 3)
+    # assert(cov_tt_cores[2].shape[0] == 3)
+    # assert(cov_tt_cores[3].shape[0] == 3)
+    # assert(cov_tt_cores[4].shape[0] == 3)
+    #print(cov_tt_cores[0])
+    #print(cov_tt_cores[0].view(3, -1))
+    fold_cov_tt_cores = [core.contiguous().view(3, -1) for core in cov_tt_cores]
+
+    pinverse_cov_tt_cores = [torch.pinverse(core) for core in fold_cov_tt_cores]
+
+    cov_list = []
+
+    init_5_product = torch.einsum('bcdefg,gr->bcdefr', mini_batch, pinverse_cov_tt_cores[-1]).view(settings.BATCH_SIZE, 3, 4, 8, 4*settings.TT_RANK)
+    init_4_product = torch.einsum('bcdef,fr->bcder', init_5_product, pinverse_cov_tt_cores[3]).view(settings.BATCH_SIZE, 3, 4, 8*settings.TT_RANK)
+    init_3_product = torch.einsum('bcde,er->bcdr', init_4_product, pinverse_cov_tt_cores[2]).view(settings.BATCH_SIZE, 3, 4*settings.TT_RANK)
+    x_1 = torch.einsum('bcd,dr->bcr', init_3_product, pinverse_cov_tt_cores[1])
+
+
+    #no need to view, only for sake of test
+    x_2 = torch.einsum('bcd,rc->brd', init_3_product, pinverse_cov_tt_cores[0]).contiguous().view(settings.BATCH_SIZE, settings.TT_RANK, 4, settings.TT_RANK)
+
+    x_3 = torch.einsum('bcde,odj->bcoje', init_4_product, pinverse_cov_tt_cores[1].view(settings.TT_RANK, 4, settings.TT_RANK)).view(settings.BATCH_SIZE, 3, settings.TT_RANK, settings.TT_RANK, 8*settings.TT_RANK)
+    #view for test
+    x_3 = torch.einsum('bcrje,cr->bje', x_3, pinverse_cov_tt_cores[0]).view(settings.BATCH_SIZE, settings.TT_RANK, 8, settings.TT_RANK)
+
+    x_4 = torch.einsum('bcdef, oej->bcdojf', init_5_product, pinverse_cov_tt_cores[2].view(settings.TT_RANK, 8, settings.TT_RANK)).view(settings.BATCH_SIZE, 3, 4, settings.TT_RANK, settings.TT_RANK, 4*settings.TT_RANK)
+    x_4 = torch.einsum('bcdrof, jdr->bcjof', x_4, pinverse_cov_tt_cores[1].view(settings.TT_RANK, 4, settings.TT_RANK)).view(settings.BATCH_SIZE, 3, settings.TT_RANK, settings.TT_RANK, 4*settings.TT_RANK)
+    x_4 = torch.einsum('bcrjf, cr->bjf', x_4, pinverse_cov_tt_cores[0]).view(settings.BATCH_SIZE, settings.TT_RANK, 4, settings.TT_RANK)
+
+    x_5 = torch.einsum('bcdefg, ofj->bcdeojg', mini_batch, pinverse_cov_tt_cores[3].view(settings.TT_RANK, 4, settings.TT_RANK)).view(settings.BATCH_SIZE, 3, 4, 8, settings.TT_RANK, settings.TT_RANK,8)
+    x_5 = torch.einsum('bcderog, jer->bcdjog', x_5, pinverse_cov_tt_cores[2].view(settings.TT_RANK, 8, settings.TT_RANK)).view(settings.BATCH_SIZE, 3, 4, settings.TT_RANK, settings.TT_RANK, 8)
+    x_5 = torch.einsum('bcdrog, jdr->bcjog', x_5, pinverse_cov_tt_cores[1].view(settings.TT_RANK, 4, settings.TT_RANK)).view(settings.BATCH_SIZE, 3, settings.TT_RANK, settings.TT_RANK, 8)
+    x_5 = torch.einsum('bcrog, cr->bog', x_5, pinverse_cov_tt_cores[0]).view(settings.BATCH_SIZE, settings.TT_RANK, 8)
+
+    if settings.IS_OUTPUT_FORM == 'dense':
+        #concatenate x_1,..,x_d to be the dimension reduced features
+        cov_list.append(x_1.view(settings.BATCH_SIZE, -1))
+        cov_list.append(x_2.view(settings.BATCH_SIZE, -1))
+        cov_list.append(x_3.view(settings.BATCH_SIZE, -1))
+        cov_list.append(x_4.view(settings.BATCH_SIZE, -1))
+        cov_list.append(x_5.view(settings.BATCH_SIZE, -1))
+
+        reduced_input = torch.cat(cov_list, 1)
+
+    elif settings.IS_OUTPUT_FORM == 'tt_matrix':
+        x_1 = torch.unsqueeze(x_1, dim=1)
+        x_1 = torch.unsqueeze(x_1, dim=1)
+        x_2 = torch.unsqueeze(x_2, dim=2)
+        x_3 = torch.unsqueeze(x_3, dim=2)
+        x_4 = torch.unsqueeze(x_4, dim=2)
+        x_5 = torch.unsqueeze(x_5, dim=-1)
+        x_5 = torch.unsqueeze(x_5, dim=2)
+
+        cov_list.append(x_1)
+        cov_list.append(x_2)
+        cov_list.append(x_3)
+        cov_list.append(x_4)
+        cov_list.append(x_5)
+
+        reduced_input = t3.TensorTrainBatch(cov_list)
+        #pdb.set_trace()
+    #assert(reduced_input.shape[0] == settings.BATCH_SIZE)
+    #print('feature dimension:', reduced_input.shape[1])
+    return reduced_input
+
+
+def tt_to_dense(x):
+    return x.full()
 
 
 #GOAL: convert a [batch_size,1,512] tensor to TensorTrainBatch_matrix, 1 means output will be one TensorTrainBatch
@@ -36,7 +137,7 @@ def input_to_tt_matrix(input, settings):
 def input_to_tt_tensor(inp, settings):
     #input shape: batch_size, num_channels, size_1, size_2
     #convert input from dense format to TT format, specifically, TensorTrainBatch
-    #input shape: [batch_size 3 32 32]
+    #input shape: CIFAR-10: [batch_size 3 32 32] MINIST: [batch_size 1 28 28]
     assert(len(inp.shape) == 4)
     num_channels = inp.shape[1]
     input_tt = []
@@ -56,14 +157,13 @@ def input_to_tt_tensor(inp, settings):
         for shift in range(1, 5):
             tt_batch_cores_curr.append(torch.cat(tuple(tt_core_curr_unsq[shift-1:(settings.BATCH_SIZE-1)*4+shift:4]), dim=0))
         input_tt.append(TensorTrainBatch(tt_batch_cores_curr))
-    pdb.set_trace()
+    #pdb.set_trace()
     return input_tt
 
 
 #use after input_to_tt_tensor, output: tt_rgb 'image'
 # def tt_rgb_image(ttbatch_list, settings):
 #     return
-
 
 def b_inv33(b_mat):
     #b_mat = b_mat.cpu()

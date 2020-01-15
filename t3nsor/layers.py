@@ -14,7 +14,7 @@ import pdb
 # Standard FC layer: W*x is equivalent to doing multiple times of inner product(weighted sum of input) between W and x
 # Thus, when the input is a TensorTrain, we initilize weight as the same TT shape as input, and multiple times of inner product between tt_cores of W and x
 class core_wise_linear(nn.Module):
-    def __init__(self, shape, tt_rank, in_channels, out_channels, settings, init=None):
+    def __init__(self, shape, tt_rank, in_channels, out_channels, settings):
         super(core_wise_linear, self).__init__()
         # initilize weight as the same TT as input
         self.ndims = len(shape)
@@ -53,30 +53,30 @@ class core_wise_linear(nn.Module):
         return torch.einsum('io,ib->bo', self.weight, I)
 
 
-# class tt_to_dense(nn.Module):
-#     def __init__(self):
-#         super(tt_to_dense, self).__init__()
-#
-#     def forward(self, input):
-#         temp = torch.squeeze(t3.tt_to_dense(input), dim=1)
-#         return temp
+class tt_to_dense(nn.Module):
+    def __init__(self):
+        super(tt_to_dense, self).__init__()
 
+    def forward(self, input):
+        temp = torch.squeeze(t3.tt_to_dense(input), dim=1)
+        return temp
 
-# class layer_to_tt_matrix(nn.Module):
-#     def __init__(self, settings):
-#         super(layer_to_tt_matrix, self).__init__()
-#         self.batch_size = settings.BATCH_SIZE
-#         self.tt_shape = settings.TT_MATRIX_SHAPE
-#         self.tt_rank = settings.TT_RANK
-#         self.settings = settings
-#
-#     def forward(self, input):
-#         # set channel to be 1
-#         input = input.view(self.batch_size, 1, 512)
-#         # pdb.set_trace()
-#         # convert input from dense format to TT format, specificaly, TensorTrainBatch
-#         return t3.input_to_tt_matrix(input, self.settings)[0]
-#
+#used in pre_FTT_net
+class layer_to_tt_matrix(nn.Module):
+    def __init__(self, settings):
+        super(layer_to_tt_matrix, self).__init__()
+        self.batch_size = settings.BATCH_SIZE
+        self.tt_shape = settings.TT_MATRIX_SHAPE
+        self.tt_rank = settings.TT_RANK
+        self.settings = settings
+
+    def forward(self, input):
+        # set channel to be 1
+        input = input.view(self.batch_size, 1, 512)
+        # pdb.set_trace()
+        # convert input from dense format to TT format, specificaly, TensorTrainBatch
+        return t3.input_to_tt_matrix(input, self.settings)[0]
+
 #
 # class layer_to_tt_tensor(nn.Module):
 #     def __init__(self, settings):
@@ -93,6 +93,7 @@ class core_wise_linear(nn.Module):
 #         # convert input from dense format to TT format, specificaly, TensorTrainBatch
 #         return t3.input_to_tt_tensor(input, self.settings)
 
+
 #conterpart layer: layer_to_tt_tensor, where we convert raw data to TT by a deterministic alg TT-SVD
 #In this layer we add matrix multiplication to output of internal SVD in TT-SVD(a sequence of SVD and reshape)
 class layer_to_tt_tensor_learnable(nn.Module):
@@ -102,8 +103,11 @@ class layer_to_tt_tensor_learnable(nn.Module):
         self.ndims = len(shape)
         self.picture_shape = [64, 3, 32, 32]
         self.batch_size = settings.BATCH_SIZE
+
         self.inside_svd_weights_s_shape = [self.batch_size, 3, self.ndims-1, self.settings.TT_RANK]
-        self.inside_svd_weights_u_v_shape = [self.batch_size, 3, self.ndims-1, self.settings.TT_RANK, self.settings.TT_RANK]
+        #self.inside_svd_weights_u_v_shape = [self.batch_size, 3, self.ndims-1, self.settings.TT_RANK, self.settings.TT_RANK]
+        self.inside_svd_weights_u_v_shape = [3, self.ndims-1, self.settings.TT_RANK, self.settings.TT_RANK]
+
         #self.weight = nn.Parameter(torch.Tensor(*self.picture_shape))
         #the following weight is for S component in output of SVD
         self.weight_s_hadmard = nn.Parameter(torch.Tensor(*self.inside_svd_weights_s_shape))
@@ -159,17 +163,19 @@ class layer_to_tt_tensor_learnable(nn.Module):
                     uu = u[:, 0:ranks[core_idx + 1]]
 
                     #perform matrix multiplication
-                    if core_idx == 1:
-                        uu = torch.mm(uu, self.weight_u_mm[batch_iter, num_c, core_idx, :, :])
+                    if core_idx >= 1:
+                        #uu = torch.mm(uu, self.weight_u_mm[batch_iter, num_c, core_idx, :, :])
+                        uu = torch.mm(uu, self.weight_u_mm[num_c, core_idx, :, :])
                     #pdb.set_trace()
                     #ss = s[0:ranks[core_idx + 1]]
                     assert(self.weight_s_hadmard[batch_iter, num_c, core_idx, :].shape[0] == s[0:ranks[core_idx+1]].shape[0])
                     ss = s[0:ranks[core_idx+1]]
-                    if core_idx == 1:
+                    if core_idx >= 1:
                         ss = torch.mul(self.weight_s_hadmard[batch_iter, num_c, core_idx, :], ss)
                     vv = v[:, 0:ranks[core_idx + 1]]
-                    if core_idx == 1:
-                        vv = torch.mm(vv, self.weight_v_mm[batch_iter, num_c, core_idx, :, :])
+                    if core_idx >= 1:
+                        #vv = torch.mm(vv, self.weight_v_mm[batch_iter, num_c, core_idx, :, :])
+                        vv = torch.mm(vv, self.weight_v_mm[num_c, core_idx, :, :])
                     #pdb.set_trace()
                     core_shape = (ranks[core_idx], curr_mode, ranks[core_idx + 1])
                     tt_cores.append(uu.view(*core_shape))
@@ -502,15 +508,13 @@ class TTSolver(nn.Module):
                 if torch.norm(x) > self.epsilon:
                     return 1 / L * (t3.tt_dense_matmul(weight_t, x_t).transpose(0, 1) + self.bias)
                 else:
-                    return 1 / L * (t3.tt_dense_matmul(weight_t, x_t).transpose(0, 1) + self.bias) + S * torch.ones(
-                        self.out_features)
+                    return 1 / L * (t3.tt_dense_matmul(weight_t, x_t).transpose(0, 1) + self.bias) + S * torch.ones(self.out_features)
             else:
                 # iter_num > 1
                 if torch.norm(x) > self.epsilon:
                     x_l = 1 / L * (t3.tt_dense_matmul(weight_t, x_t).transpose(0, 1) + self.bias)
                 else:
-                    x_l = 1 / L * (t3.tt_dense_matmul(weight_t, x_t).transpose(0, 1) + self.bias) + S * torch.ones(
-                        self.out_features).to(x_t.device)
+                    x_l = 1 / L * (t3.tt_dense_matmul(weight_t, x_t).transpose(0, 1) + self.bias) + S * torch.ones(self.out_features).to(x_t.device)
                 # print('x_l shape:', x_l.shape)
             for i in range(1, self.iter_num):
                 if torch.norm(x_l) > self.epsilon:
@@ -526,8 +530,8 @@ class TTSolver(nn.Module):
 
 
 class FTTLinear(nn.Module):
-    def __init__(self, in_features=None, out_features=None, bias=False, init=None, shape=[[4, 8, 4, 4], [1, 2, 5, 1]],
-                 auto_shapes=False, d=3, tt_rank=8, stddev=None, auto_shape_mode='ascending',
+    def __init__(self, in_features=None, out_features=None, bias=False, init=None, shape=[[3, 4, 8, 4, 8], [1, 2, 5, 1, 1]],
+                 auto_shapes=False, d=3, tt_rank=3, stddev=None, auto_shape_mode='ascending',
                  auto_shape_criterion='entropy',
                  ):
 
@@ -584,82 +588,87 @@ class FTTLinear(nn.Module):
             temp = t3.add(t3.tt_tt_matmul(x, self.weight), self.bias)
             return temp
 
-# class FTT_Solver(nn.Module):
-#     def __init__(self,
-#                 in_features=None,
-#                 out_features=None,
-#                 bias=True,
-#                 init=None,
-#                 shape=None,
-#                 auto_shapes=True,
-#                 d=3,
-#                 tt_rank=8,
-#                 iter_num=4,
-#                 l=1,
-#                 s=-1,
-#                 epsilon=1,
-#                 auto_shape_mode='ascending',
-#                 auto_shape_criterion='entropy'):
-#
-#         super(FTTSolver, self).__init__()
-#
-#         if auto_shapes:
-#             print('auto_shape working...')
-#             if in_features is None or out_features is None:
-#                 raise ValueError("Shape is not specified")
-#
-#             in_quantization = t3.utils.auto_shape(
-#             in_features, d=d, criterion=auto_shape_criterion, mode=auto_shape_mode)
-#             out_quantization = t3.utils.auto_shape(
-#             out_features, d=d, criterion=auto_shape_criterion, mode=auto_shape_mode)
-#
-#             shape = [in_quantization, out_quantization]
-#
-#         if init is None:
-#             if shape is None:
-#                 raise ValueError(
-#                         "if init is not provided, please specify shape, or set auto_shapes=True")
-#         else:
-#             shape = init.raw_shape
-#
-#         if init is None:
-#             init = t3.glorot_initializer(shape, tt_rank=tt_rank)
-#
-#         self.shape = shape
-#         self.weight = init.to_parameter()
-#         self.parameters = self.weight.parameter
-#         self.iter_num = iter_num
-#         self.L = l
-#         self.S = s
-#         self.epsilon = epsilon
-#         self.out_features = out_features
-#
-#         if bias:
-#             self.bias = torch.nn.Parameter(1e-2 * torch.ones(out_features))
-#         else:
-#             self.register_parameter('bias', None)
-#
-#     def forward(self, x):
-#         if self.bias is None:
-#             print('not implemented error')
-#         else:
-#             L = self.L
-#             S = self.S
-#             if self.iter_num == 1:
-#                 if t3.frobenius_norm_squared(x) > self.epsilon:
-#                     return 1/L*(t3.tt_tt_matmul(x,self.weight)+self.bias)
-#                 else:
-#                     return 1/L*(t3.tt_tt_matmul(x,self.weight)+self.bias) + S*torch.ones(self.out_features)
-#             else:
-#             # iter_num > 1
-#                 if t3.frobenius_norm_squared(x) > self.epsilon:
-#                     x_l = 1/L*(t3.tt_tt_matmul(x,self.weight) + self.bias)
-#                 else:
-#                     x_l = 1/L*(t3.tt_tt_matmul(x,self.weight) + self.bias) + S*torch.ones(self.out_features)
-#             for i in range(1,self.iter_num):
-#                 if torch.norm(x_l) > self.epsilon:
-#                     x_l = x_l - 1/L*t3.tt_tt_matmul(t3.tt_tt_matmul(self.weight,self.weight),x_l) + 1/L*t3.tt_tt_matmul(x,self.weight) + self.bias
-#                 else:
-#                     #add a random TT matrix
-#                     x_l = x_l - 1/L*t3.tt_tt_matmul(t3.tt_tt_matmul(self.weight,self.weight),x_l) + 1/L*t3.tt_tt_matmul(x,self.weight) + self.bias + S*torch.ones(self.out_features)
-#             return x_l
+
+class FTT_Solver(nn.Module):
+    def __init__(self,
+                in_features=None,
+                out_features=None,
+                bias=False,
+                init=None,
+                shape=None,
+                auto_shapes=False,
+                d=3,
+                tt_rank=8,
+                iter_num=4,
+                l=1,
+                s=-1,
+                epsilon=1,
+                auto_shape_mode='ascending',
+                auto_shape_criterion='entropy'):
+
+        super(FTT_Solver, self).__init__()
+
+        if auto_shapes:
+            print('auto_shape working...')
+            if in_features is None or out_features is None:
+                raise ValueError("Shape is not specified")
+
+            in_quantization = t3.utils.auto_shape(
+            in_features, d=d, criterion=auto_shape_criterion, mode=auto_shape_mode)
+            out_quantization = t3.utils.auto_shape(
+            out_features, d=d, criterion=auto_shape_criterion, mode=auto_shape_mode)
+
+            shape = [in_quantization, out_quantization]
+
+        if init is None:
+            if shape is None:
+                raise ValueError(
+                        "if init is not provided, please specify shape, or set auto_shapes=True")
+        else:
+            shape = init.raw_shape
+
+        if init is None:
+            init = t3.glorot_initializer(shape, tt_rank=tt_rank)
+
+        self.shape = shape
+        self.weight = init.to_parameter()
+        self.parameters = self.weight.parameter
+        self.iter_num = iter_num
+        self.L = l
+        self.S = s
+        self.epsilon = epsilon
+        self.out_features = out_features
+
+        if bias:
+            self.bias = torch.nn.Parameter(1e-2 * torch.ones(out_features))
+            shape_
+            init_bias = t3.glorot_initializer(shape[1])
+            self.bias =
+        else:
+            self.register_parameter('bias', None)
+
+    def forward(self, x):
+        if self.bias is None:
+            print('not implemented error')
+        else:
+            L = self.L
+            S = self.S
+            if self.iter_num == 1:
+                if t3.frobenius_norm_squared(x) > self.epsilon:
+                    return 1/L*(t3.tt_tt_matmul(x, self.weight)+self.bias)
+                else:
+                    return 1/L*(t3.tt_tt_matmul(x, self.weight)+self.bias) + S*torch.ones(self.out_features)
+            else:
+            # iter_num > 1
+                pdb.set_trace()
+                if t3.frobenius_norm_squared(x) > self.epsilon:
+                    x_l = 1/L*(t3.tt_tt_matmul(x, self.weight) + self.bias)
+                else:
+                    x_l = 1/L*(t3.tt_tt_matmul(x, self.weight) + self.bias) + S*torch.ones(self.out_features)
+            for i in range(1, self.iter_num):
+                if torch.norm(x_l) > self.epsilon:
+                    x_l = x_l - 1/L*t3.tt_tt_matmul(t3.tt_tt_matmul(self.weight, self.weight), x_l) + 1/L*t3.tt_tt_matmul(x, self.weight) + self.bias
+                else:
+                    #add a random TT matrix
+                    x_l = x_l - 1/L*t3.tt_tt_matmul(t3.tt_tt_matmul(self.weight, self.weight), x_l) + 1/L*t3.tt_tt_matmul(x, self.weight) + self.bias + S*torch.ones(self.out_features)
+            return x_l
