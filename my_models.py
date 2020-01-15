@@ -15,10 +15,12 @@ class IS_FTT_1_layer_relu(nn.Module):
         super(IS_FTT_1_layer_relu, self).__init__()
         self.ip1 = t3.FTT_Solver(in_features=177, out_features=2000000, shape=[[3, 4, 8, 4, 8], [10, 20, 50, 20, 10]], tt_rank=3)
         self.ip2 = t3.FTT_Solver(in_features=2000000, out_features=10, shape=[[10, 20, 50, 20, 10], [1, 2, 5, 1, 1]], tt_rank=3)
+        self.to_dense = t3.layers.tt_to_dense()
 
     def forward(self, x):
         x = self.ip1(x)
         x = self.ip2(x)
+        x = self.to_dense(x)
         return F.log_softmax(x, dim=1)
 
 
