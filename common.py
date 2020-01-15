@@ -22,7 +22,7 @@ NUM_CLASSES = {
 MODEL_DICT = {
      #'LeNet_300_100': lenet_300_100,
      'ptt_vgg11': ptt_vgg11,
-     'ptt_vgg11_bn':ptt_vgg11_bn,
+     'ptt_vgg11_bn': ptt_vgg11_bn,
      'ptt_vgg13': ptt_vgg13,
      'ptt_vgg13_bn': ptt_vgg13_bn,
      'ptt_vgg16': ptt_vgg16,
@@ -30,27 +30,46 @@ MODEL_DICT = {
      'ptt_vgg19_bn': ptt_vgg19_bn,
      'ptt_vgg19': ptt_vgg19,
      #'resnet18': resnet18,
-     'manifold_net':manifold_Net,
-     'pre_cnn': pre_mani_net,
-     'linear': pre_FTT_Net,
+     'manifold_net': manifold_Net,
+     #'pre_cnn': pre_mani_net,
+     #'linear': pre_FTT_Net,
+     'cw_fc_net': cw_fc_net,
+     'slp': slp,
+     'important_sketching_wideResnet': important_sketching_input_wideresnet,
+     'important_sketching_ptt_net': 'important_sketching',
+     'important_sketching_ftt_1hidden_relu_net': IS_FTT_1_layer_relu,
+     'important_sketching_logistic': Logistic,
+     'important_sketching_ftt_logistic': IS_FTT_Logistic,
  }
 
 SHAPE_DICT = {
-    'pre_cnn': [4,8,4,4],
-    'manifold_net': [4,8,4,8],
+    'pre_cnn': [4, 8, 4, 4],
+    'manifold_net': [4, 8, 4, 8],
+    'cw_fc_net': [4, 8, 4, 8],
+    'slp': None,
  }
 
 EXTRACT_DICT = {
     'pre_cnn': 'cnn',
     'manifold_net': 'tt',
     'linear': 'cnn',
+    'cw_fc_net': 'tt',
+    'slp': None,
+    'important_sketching_wideResnet': 'important_sketching',
+    'important_sketching_ptt_1hidden_relu_net': 'important_sketching',
+    'important_sketching_ftt_1hidden_relu_net': 'important_sketching',
+    'important_sketching_logistic': 'important_sketching',
+    'important_sketching_ftt_logistic': 'important_sketching',
 }
+
 
 def skew_sym_part(m):
     return 1/2 * (m.t() - m)
 
+
 def to_list(tuple):
     return [i for i in tuple]
+
 
 def log_f(f, console=True):
     def log(msg):
@@ -59,6 +78,7 @@ def log_f(f, console=True):
         if console:
             p(msg)
     return log
+
 
 def dir(path):
     if not os.path.exists(path):
@@ -74,6 +94,8 @@ except Exception:
 TOTAL_BAR_LENGTH = 65.
 last_time = time.time()
 begin_time = last_time
+
+
 def progress_bar(current, total, msg=None):
     global last_time, begin_time
     if current == 0:
@@ -116,6 +138,7 @@ def progress_bar(current, total, msg=None):
     else:
         sys.stdout.write('\n')
     sys.stdout.flush()
+
 
 def format_time(seconds):
     days = int(seconds / 3600/24)
@@ -166,6 +189,7 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+
 
 def accuracy(output, target, topk=(1,)):
     """Computes the precision@k for the specified values of k"""

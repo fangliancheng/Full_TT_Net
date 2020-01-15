@@ -15,40 +15,45 @@ import pdb
 import math
 
 parser = argparse.ArgumentParser(description='PyTorch')
-parser.add_argument('--arch', default='cw_fc_net', type=str, help='arch')
+parser.add_argument('--arch', default='important_sketching_ftt_1hidden_relu_net', type=str, help='arch')
 parser.add_argument('--dataset', default='CIFAR10', type=str, help='dataset')
 parser.add_argument('--mark', default='t5', type=str, help='mark')
 #parser.add_argument('--gpu', default='1', type=int, help='GPU id to use.')
 args = parser.parse_args()
 
 settings = edict.EasyDict({
-    "GPU" : True,
-    "IMG_SIZE" : 224,
-    "CNN_MODEL" : MODEL_DICT[args.arch],
-    "DATASET" : args.dataset,
-    "DATASET_PATH" : DATASET_PATH[args.dataset],
-    "NUM_CLASSES" : NUM_CLASSES[args.dataset],
+    "GPU": True,
+    "IMG_SIZE": 224,
+    "CNN_MODEL": MODEL_DICT[args.arch],
+    "DATASET": args.dataset,
+    "DATASET_PATH": DATASET_PATH[args.dataset],
+    "NUM_CLASSES": NUM_CLASSES[args.dataset],
     #"MODEL_FILE" : "result/pytorch_{}_{}_{}/snapshot/epoch_{}.pth".format(args.arch, args.mark, args.dataset, 62),
-    "MODEL_FILE" : None,
+    "MODEL_FILE": None,
     "FINETUNE": False,
-    "WORKERS" : 12,
-    "BATCH_SIZE" : 64,
-    "PRINT_FEQ" : 10,
-    "LR" : 0.1,
-    "EPOCHS" : 45,
-    "CLIP_GRAD": 0,
+    "WORKERS": 12,
+    "BATCH_SIZE": 64,
+    "PRINT_FEQ": 10,
+    "LR": 0.1,
+    "EPOCHS": 45,
+    "CLIP_GRAD": 3,
     "ITERATE_NUM": 6,
-    "TT_SHAPE": SHAPE_DICT[args.arch],
+    #"TT_SHAPE": SHAPE_DICT[args.arch],
     #"TT_SHAPE": [4,8,4,8], #Shpae of Cifar 10 data is 32*32
     #"TT_SHAPE_512":[4,8,4,4],   #Output shape of ResNet 18 pretrained network(drop the last classification layer) is dimension 512
-    "TT_MATRIX_SHAPE": [None, [4, 8, 4, 4]], #Linear transformation in TT
-    "TT_RANK": 4,
-    #"FEATURE_EXTRACT": EXTRACT_DICT[args.arch],
-    "FEATURE_EXTRACT": None,
+    #"TT_MATRIX_SHAPE": [None, [4, 8, 4, 4]], #Linear transformation in TT
+    "INPUT_TT_MATRIX_IS_SHAPE": [None, [3, 4, 8, 4, 8]],
+    "TT_RANK": 3,
+    "FEATURE_EXTRACT": EXTRACT_DICT[args.arch],
+    #"FEATURE_EXTRACT": None,
     #"FEATURE_EXTRACT":'tt', #or cnn
     "OTT": False,
     "BENCHMARK": False, #put a trainable fc layer under a untrainable pretrained ResNet18
     "LEARNABLE": True,
+    #Use curr_minibatch to construct sample covariance, Alternative: full: use all training data to construct sample covariance
+    #"SAMPLE_MODE": 'curr_minibatch',
+    "SAMPLE_MODE": 'full',
+    "IS_OUTPUT_FORM": 'tt_matrix',
 })
 
 device = torch.device('cuda:0')
@@ -63,51 +68,51 @@ settings.OUTPUT_FOLDER = "result/pytorch_{}_{}_{}".format(args.arch, args.mark, 
 snapshot_dir = dir(os.path.join(settings.OUTPUT_FOLDER, 'snapshot'))
 
 
-def sample_test(settings, train_loader, val_loader, dir=None):
-    # get some random training images
-    dataiter = iter(train_loader)
-    input,target = dataiter.next()
+# def sample_test(settings, train_loader, val_loader, dir=None):
+#     # get some random training images
+#     dataiter = iter(train_loader)
+#     input,target = dataiter.next()
+#
+#     if settings.GPU:
+#         target = target.to(device=device)
+#         input = input.to(device=device)
+#
+#     if settings.FEATURE_EXTRACT == 'tt' and settings.BENCHMARK == False:
+#         input_tt = t3.input_to_tt_tensor(input, settings)
+#     if settings.BENCHMARK:
+#         input_tt = input
+#
+#     if settings.GPU:
+#         criterion = nn.CrossEntropyLoss().cuda()
+#     else:
+#         criterion = nn.CrossEntropyLoss()
+#     num_sample = 0
+#     loss = 666
+#     while loss > 3.99:
+#         if settings.BENCHMARK==True:
+#             model = my_models.slp(settings)
+#             def weights_init(m):
+#                 if isinstance(m, nn.Linear):
+#                     nn.init.xavier_normal(m.weight,gain=15)
+#                     #nn.init.kaiming_normal_(m.weight, a=math.sqrt(5))
+#                     #torch.nn.init.uniform_(m.weight,a=-10,b=10)
+#                     torch.nn.init.zeros_(m.bias)
+#             model.apply(weights_init)
+#         else:
+#             model = settings.CNN_MODEL(settings)
+#         #print(model)
+#         if settings.GPU:
+#         #model = nn.DataParallel(model).cuda()
+#             model = model.cuda()
+#             #print('model parameter:',dict(model.named_parameters()))
+#         output = model(input_tt)
+#         loss = criterion(output, target)
+#         num_sample+=1
+#         print('TT', 'num_sample:', num_sample, 'loss:', loss)
+#     print("reject sampling succeed!!!")
 
-    if settings.GPU:
-        target = target.to(device=device)
-        input = input.to(device=device)
 
-    if settings.FEATURE_EXTRACT == 'tt' and settings.BENCHMARK == False:
-        input_tt = t3.input_to_tt_tensor(input, settings)
-    if settings.BENCHMARK:
-        input_tt = input
-
-    if settings.GPU:
-        criterion = nn.CrossEntropyLoss().cuda()
-    else:
-        criterion = nn.CrossEntropyLoss()
-    num_sample = 0
-    loss = 666
-    while loss > 3.99:
-        if settings.BENCHMARK==True:
-            model = my_models.slp(settings)
-            def weights_init(m):
-                if isinstance(m, nn.Linear):
-                    nn.init.xavier_normal(m.weight,gain=15)
-                    #nn.init.kaiming_normal_(m.weight, a=math.sqrt(5))
-                    #torch.nn.init.uniform_(m.weight,a=-10,b=10)
-                    torch.nn.init.zeros_(m.bias)
-            model.apply(weights_init)
-        else:
-            model = settings.CNN_MODEL(settings)
-        #print(model)
-        if settings.GPU:
-        #model = nn.DataParallel(model).cuda()
-            model = model.cuda()
-            #print('model parameter:',dict(model.named_parameters()))
-        output = model(input_tt)
-        loss = criterion(output, target)
-        num_sample+=1
-        print('TT','num_sample:',num_sample,'loss:',loss)
-    print("reject sampling succeed!!!")
-
-
-def train(model, train_loader, val_loader, dir=None):
+def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_list=None):
     #switch to train mode
     model.train()
     print('setting.MODULE_FILE:', settings.MODEL_FILE)
@@ -129,10 +134,10 @@ def train(model, train_loader, val_loader, dir=None):
     #criterion = nn.MSELoss().cuda()
 
     params_to_update = model.parameters()
-    if settings.FEATURE_EXTRACT=='cnn':
+    if settings.FEATURE_EXTRACT == 'cnn':
         params_to_update = []
-        for name,param in model.named_parameters():
-            if param.requires_grad == True:
+        for name, param in model.named_parameters():
+            if param.requires_grad:
                 params_to_update.append(param)
 
     #weight_decay set to a big value: 1e-1
@@ -143,6 +148,9 @@ def train(model, train_loader, val_loader, dir=None):
         lr = settings.LR * (0.1 ** (epoch // (settings.EPOCHS // 3)))
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
+
+    # #Use full dataset to compute sample covariance tensor
+    # sample_covariance_tt_core_list = t3.construct_sample_covariance_tensor('full', settings)
 
     for epoch in range(epoch_cur+1, settings.EPOCHS):
         adjust_learning_rate(optimizer, epoch)
@@ -158,12 +166,22 @@ def train(model, train_loader, val_loader, dir=None):
         end = time.time()
 
         for batch_idx, (input, target) in enumerate(train_loader):
+            #input = torch.FloatTensor(input)
+            #target = torch.FloatTensor(target)
             if settings.GPU:
                 target = target.to(device=device)
                 input = input.to(device=device)
 
             if settings.FEATURE_EXTRACT == 'tt':
                 input_tt = t3.input_to_tt_tensor(input, settings)
+
+            if settings.FEATURE_EXTRACT == 'important_sketching':
+                if settings.SAMPLE_MODE == 'curr_minibatch':
+                    sample_covariance_tt_core_list = t3.construct_sample_covariance_tensor(settings.SAMPLE_MODE, settings, input, target)
+
+                reduced_cov = t3.important_sketching(input, sample_covariance_tt_core_list, settings)
+                #Then use target, reduced_cov as response and new dimension-reduced feature to do supervised learning
+                input = reduced_cov
 
             data_time.update(time.time() - end)
             #for forward time
@@ -185,15 +203,16 @@ def train(model, train_loader, val_loader, dir=None):
                 loss.backward()
 
             #observe SVD layer gradient
-            print('1', torch.max(model.learnable_conversion.weight_v_mm.grad), torch.min(model.learnable_conversion.weight_v_mm.grad))
-            print('2', torch.max(model.learnable_conversion.weight_u_mm.grad), torch.min(model.learnable_conversion.weight_u_mm.grad))
-            print('3', torch.max(model.learnable_conversion.weight_s_hadmard.grad), torch.min(model.learnable_conversion.weight_s_hadmard.grad))
+            # print('1', torch.max(model.learnable_conversion.weight_v_mm.grad), torch.min(model.learnable_conversion.weight_v_mm.grad))
+            # print('2', torch.max(model.learnable_conversion.weight_u_mm.grad), torch.min(model.learnable_conversion.weight_u_mm.grad))
+            # print('3', torch.max(model.learnable_conversion.weight_s_hadmard.grad), torch.min(model.learnable_conversion.weight_s_hadmard.grad))
 
             # measure accuracy and record loss
             prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-            losses.update(loss.item(), input.size(0))
-            top1.update(prec1.item(), input.size(0))
-            top5.update(prec5.item(), input.size(0))
+            #replace input.size(0) with settings.BATCH_SIZE
+            losses.update(loss.item(), settings.BATCH_SIZE)
+            top1.update(prec1.item(), settings.BATCH_SIZE)
+            top5.update(prec5.item(), settings.BATCH_SIZE)
 
             # # compute gradient and do SGD step
             # optimizer.zero_grad()
@@ -214,13 +233,13 @@ def train(model, train_loader, val_loader, dir=None):
 
             if batch_idx % settings.PRINT_FEQ == 0:
                 print('Train: [{0}/{1}]\t'
-                      'Forward {forward_time.val:.3f} ({forward_time.avg:.3f})\t'
+                      'Fwd {forward_time.val:.3f} ({forward_time.avg:.3f})\t'
                       'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                       'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
                       'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                       'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
                       'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                    batch_idx, len(train_loader), forward_time=forward_time,batch_time=batch_time, data_time=data_time, loss=losses,
+                    batch_idx, len(train_loader), forward_time=forward_time, batch_time=batch_time, data_time=data_time, loss=losses,
                     top1=top1, top5=top5))
         print(' * TIMESTAMP {}'.format(time.strftime("%Y-%m-%d-%H:%M")))
         print(' * TRAIN Prec@1 {top1.avg:.3f} Prec@5 {top5.avg:.3f}'.format(top1=top1, top5=top5))
@@ -233,13 +252,14 @@ def train(model, train_loader, val_loader, dir=None):
         }, os.path.join(dir, 'epoch_%d.pth' % epoch))
 
 
-def validate(model, val_loader):
+def validate(model, val_loader, sample_covariance_tt_core_list=None):
     if settings.MODEL_FILE is not None:
         check_point = torch.load(settings.MODEL_FILE)
         # state_dict = {str.replace(k, 'module.', ''): v for k, v in check_point[
         #     'state_dict'].items()}
         state_dict = check_point['state_dict']
         model.load_state_dict(state_dict)
+
     if settings.GPU:
         criterion = nn.CrossEntropyLoss().cuda()
     else:
@@ -255,7 +275,8 @@ def validate(model, val_loader):
     for i, (input, target) in enumerate(val_loader):
         target = target.to(device)
         input = input.to(device)
-        input_tt = t3.input_to_tt_tensor(input, settings)
+        reduced_cov = t3.important_sketching(input, sample_covariance_tt_core_list, settings)
+        #input_tt = t3.input_to_tt_tensor(input, settings)
         #if settings.GPU:
             #target = target.cuda(non_blocking=True)
             #input = input.cuda(non_blocking=True)
@@ -264,12 +285,12 @@ def validate(model, val_loader):
             #target_var = torch.autograd.Variable(target)
 
             # compute output
-            fc_output = model(input_tt)
-
-            loss = criterion(fc_output, target)
+            #fc_output = model(input_tt)
+            output = model(reduced_cov)
+            loss = criterion(output, target)
 
             # measure accuracy and record loss
-            prec1, prec5 = accuracy(fc_output.data, target, topk=(1, 5))
+            prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
         top1.update(prec1.item(), input.size(0))
         top5.update(prec5.item(), input.size(0))
@@ -294,7 +315,6 @@ def main():
     val_loader = cifar_loader(settings, 'val')
     train_loader = cifar_loader(settings, 'train', shuffle=True, data_augment=True)
 
-
     if settings.FEATURE_EXTRACT == 'cnn' and not settings.BENCHMARK:
         #pdb.set_trace()
         def set_parameter_requires_grad(model, feature_extracting):
@@ -307,7 +327,7 @@ def main():
         num_ftrs = model.fc.in_features #512
         model.fc = settings.CNN_MODEL(settings)
         #pdb.set_trace()
-    elif settings.BENCHMARK == True:
+    elif settings.BENCHMARK:
         def set_parameter_requires_grad(model, feature_extracting):
             if feature_extracting:
                 for param in model.parameters():
@@ -320,6 +340,7 @@ def main():
         model.fc = nn.Linear(512, 10)
     else:
         model = settings.CNN_MODEL(settings)
+        print(model)
 
     if settings.GPU:
         #model = nn.DataParallel(model).cuda()
@@ -329,15 +350,20 @@ def main():
     #print(model)
     #model.train()
     #model = my_models.tt_input_resnet18(settings).cuda()
-    model = my_models.learnable_tt_wide_resnet(settings).cuda()
-    print(model)
+    # model = my_models.learnable_tt_wide_resnet(settings).cuda()
+    # print(model)
     #test cifar10 ---> TT ---> Resnet
     #model = models.__dict__['resnet18']().cuda()
     #sample_test(settings,train_loader,val_loader,snapshot_dir)
-    train(model, train_loader, val_loader, snapshot_dir)
+
+    # Use full dataset to compute sample covariance tensor
+    sample_covariance_tt_core_list = t3.construct_sample_covariance_tensor('full', settings)
+
+    train(model, train_loader, val_loader, snapshot_dir, sample_covariance_tt_core_list)
+    #only test the last 10 epoch
     for epoch in range(settings.EPOCHS - 10, settings.EPOCHS):
         settings.MODEL_FILE = "result/pytorch_{}_{}_{}/snapshot/epoch_{}.pth".format(args.arch, args.mark, args.dataset, epoch)
-        validate(model, val_loader)
+        validate(model, val_loader, sample_covariance_tt_core_list)
 
 
 if __name__ == '__main__':
