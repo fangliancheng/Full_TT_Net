@@ -58,8 +58,9 @@ class tt_to_dense(nn.Module):
         super(tt_to_dense, self).__init__()
 
     def forward(self, input):
-        temp = torch.squeeze(t3.tt_to_dense(input), dim=1)
+        temp = t3.tt_to_dense(input)
         return temp
+
 
 #used in pre_FTT_net
 class layer_to_tt_matrix(nn.Module):
