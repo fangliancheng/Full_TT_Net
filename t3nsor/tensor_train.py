@@ -3,8 +3,9 @@ import numpy as np
 import torch.nn as nn
 import pdb
 
+
 class TensorTrain(object):
-    def __init__(self, tt_cores, shape=None, tt_ranks=None, ott=False, convert_to_tensors=True):
+    def __init__(self, tt_cores, shape=None, tt_ranks=None, ott=False, convert_to_tensors=False):
         #tt_cores = list(tt_cores)
         if convert_to_tensors:
             for i in range(len(tt_cores)):
@@ -109,11 +110,7 @@ class TensorTrain(object):
             new_cores.append(core)
 
         tt_p = TensorTrain(new_cores, convert_to_tensors=False)
-        #test
-        #core1 = tt_p.tt_cores[0]
         tt_p._parameter = nn.ParameterList(tt_p.tt_cores)
-        #print('core1:',core1)
-        #tt_p._parameter = nn.ParameterList(core1)
         tt_p._is_parameter = True
         return tt_p
 
@@ -167,6 +164,7 @@ class TensorTrain(object):
         else:
             return "A Tensor Train of shape %s, TT-ranks: %s" \
                    "\n on device '%s' with compression rate %.2f" % (shape, tt_ranks, device, compression_rate)
+
 
 #Liancheng: convert_to_tensors default set to False
 class TensorTrainBatch():

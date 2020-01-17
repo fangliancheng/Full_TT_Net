@@ -1,5 +1,7 @@
 import numpy as np
 import torch
+import t3nsor as t3
+import pdb
 
 from t3nsor.tensor_train import TensorTrain
 from t3nsor.tensor_train import TensorTrainBatch
@@ -65,8 +67,10 @@ def _validate_input_parameters(is_tensor, shape, **params):
                 raise ValueError('`tt_rank` array has inappropriate size, expected'
                                  '1 or %d, got %d' % (shape[0].size + 1, tt_rank.size))
 
+
 def tensor_with_random_cores_epsilon(shape,tt_rank,epsilon):
     return tensor_with_random_cores(shape,tt_rank=tt_rank,mean=epsilon)
+
 
 def tensor_with_random_cores(shape, tt_rank=2, mean=0., stddev=1.,dtype=torch.float32):
     """Generate a TT-tensor of the given shape with N(mean, stddev^2) cores.
@@ -104,8 +108,6 @@ def tensor_with_random_cores(shape, tt_rank=2, mean=0., stddev=1.,dtype=torch.fl
     return TensorTrain(tt_cores, shape, tt_rank)
 
 
-
-
 def tensor_ones(shape, dtype=torch.float32):
     """Generate TT-tensor of the given shape with all entries equal to 1.
     Args:
@@ -115,7 +117,7 @@ def tensor_ones(shape, dtype=torch.float32):
     Returns:
       TensorTrain object containing a TT-tensor
     """
-
+    #pdb.set_trace()
     shape = np.array(shape)
     _validate_input_parameters(is_tensor=True, shape=shape)
     num_dims = shape.size
@@ -125,6 +127,22 @@ def tensor_ones(shape, dtype=torch.float32):
         tt_cores[i] = torch.ones(curr_core_shape, dtype=dtype)
 
     return TensorTrain(tt_cores)
+
+
+def matrix_ones(shape, dtype=torch.float32):
+    """Generate TT-matrix of shape [None,[shape[1]] or [[shape[0]], None]with all entries in dense format to 1"""
+    """if shape = [None, [a,b,c]], expand 1 to dim 1 of tt cores"""
+    """if shape = [[a,b,c], None], expand 1 to dim 2 of tt cores"""
+    #equi_tensor = t3.tensor_ones(shape)
+    if shape[0] is None:
+        equi_tensor = t3.tensor_ones(shape[1])
+        new_cores = [torch.unsqueeze(curr_core, dim=1) for curr_core in equi_tensor.tt_cores]
+    if shape[1] is None:
+        equi_tensor = t3.tensor_ones(shape[0])
+        new_cores = [torch.unsqueeze(curr_core, dim=2) for curr_core in equi_tensor.tt_cores]
+    else:
+        print("Wrong shape!")
+    return TensorTrain(new_cores)
 
 
 def tensor_zeros(shape, dtype=torch.float32):
@@ -322,7 +340,6 @@ def random_matrix(shape, tt_rank=2, mean=0., stddev=1.,
         raise NotImplementedError('non-zero mean is not supported yet')
 
 
-
 def glorot_initializer(shape, tt_rank=4, dtype=torch.float32):
     shape = list(shape)
     # In case shape represents a vector, e.g. [None, [2, 2, 2]]
@@ -338,7 +355,6 @@ def glorot_initializer(shape, tt_rank=4, dtype=torch.float32):
     n_out = np.prod(shape[1])
     lamb = 2.0 / (n_in + n_out)
     return random_matrix(shape, tt_rank=tt_rank, stddev=np.sqrt(lamb),dtype=dtype)
-
 
 
 def matrix_batch_with_random_cores(shape, batch_size=1, tt_rank=2, mean=0., stddev=1.,

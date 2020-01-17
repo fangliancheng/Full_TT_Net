@@ -614,10 +614,8 @@ class FTT_Solver(nn.Module):
             if in_features is None or out_features is None:
                 raise ValueError("Shape is not specified")
 
-            in_quantization = t3.utils.auto_shape(
-            in_features, d=d, criterion=auto_shape_criterion, mode=auto_shape_mode)
-            out_quantization = t3.utils.auto_shape(
-            out_features, d=d, criterion=auto_shape_criterion, mode=auto_shape_mode)
+            in_quantization = t3.utils.auto_shape(in_features, d=d, criterion=auto_shape_criterion, mode=auto_shape_mode)
+            out_quantization = t3.utils.auto_shape(out_features, d=d, criterion=auto_shape_criterion, mode=auto_shape_mode)
 
             shape = [in_quantization, out_quantization]
 
@@ -631,9 +629,10 @@ class FTT_Solver(nn.Module):
         if init is None:
             init = t3.glorot_initializer(shape, tt_rank=tt_rank)
 
+        self.init_tt_rank = tt_rank
         self.shape = shape
-        self.weight = init.to_parameter()
-        self.parameters = self.weight.parameter
+        #self.weight = init.to_parameter()
+        self.parameters = None
         self.iter_num = iter_num
         self.L = l
         self.S = s
@@ -643,11 +642,47 @@ class FTT_Solver(nn.Module):
         if bias:
             #self.bias = torch.nn.Parameter(1e-2 * torch.ones(out_features))
             init_bias = t3.glorot_initializer(shape=[None, self.shape[1]])
-            self.bias = init_bias.to_parameter()
+            #self.test_weight = nn.Parameter(init_bias.tt_cores[0])
+            #self.bias = init_bias.to_parameter()
+            #self.bias = self.bias_to_parameter(init_bias)
+            #manully register bias parameter:
+            #self.register_parameter('bias', self.bias)
+            self.weight, self.bias = self.weight_bias_to_parameter(init, init_bias)
+
         else:
-            self.register_parameter('bias', None)
+            raise NotImplementedError
+            #self.register_parameter('bias', None)
+
+    def weight_bias_to_parameter(self, init_weight, init_bias):
+        weight_bias_list = nn.ParameterList([])
+        bias_list = []
+        for weight_core in init_weight.tt_cores:
+            weight_core = nn.Parameter(weight_core)
+            weight_bias_list.append(weight_core)
+        weight_tt = TensorTrain(weight_bias_list, convert_to_tensors=False)
+        for bias_core in init_bias.tt_cores:
+            bias_core = nn.Parameter(bias_core)
+            #core.is_tt = True
+            bias_list.append(bias_core)
+            weight_bias_list.append(bias_core)
+
+        """We must add this assignment to add the parameter to model"""
+        """1.Construct nn.Parameterlist 2.Assign Parameterlist to something"""
+        self.parameters = weight_bias_list
+
+        bias_tt = TensorTrain(bias_list, convert_to_tensors=False)
+        #tt_p = TensorTrain(new_bias_cores, convert_to_tensors=False)
+        #test
+        #core1 = tt_p.tt_cores[0]
+        #tt_p._parameter = nn.ParameterList(tt_p.tt_cores)
+        #print('core1:',core1)
+        #tt_p._parameter = nn.ParameterList(core1)
+        bias_tt._is_parameter = True
+        weight_tt._is_parameter = True
+        return weight_tt, bias_tt
 
     def forward(self, x):
+        print('bias parameter:', self.bias)
         if self.bias is None:
             print('not implemented error')
         else:
@@ -655,17 +690,20 @@ class FTT_Solver(nn.Module):
             S = self.S
             if self.iter_num == 1:
                 f_norm = t3.frobenius_norm_squared(x)
-                batch_size = int(f_norm)
+                batch_size = len(f_norm)
                 tt_list = []
                 for idx in range(batch_size):
                     if f_norm[idx] > self.epsilon:
-                        output_tt = t3.utils.scalar_tt_mul(t3.add(t3.tt_tt_matmul(t3.utils.get_element_from_batch(x, idx), self.weight), self.bias), 1/L)
-                        rounded_output_tt = t3.round_tt(output_tt, self.tt_rank)
+                        #pdb.set_trace()
+                        output_tt = t3.scalar_tt_mul(t3.add(t3.tt_tt_matmul(t3.utils.get_element_from_batch(x, idx), self.weight), self.bias), 1/L)
+                        rounded_output_tt = t3.round(output_tt, self.init_tt_rank)
                         tt_list.append(rounded_output_tt)
                     else:
-                        out_put_tt = t3.add(t3.utils.scalar_tt_mul(t3.add(t3.tt_tt_matmul(t3.utils.get_element_from_batch(x, idx), self.weight), self.bias), 1/L), t3.utils.scalar_tt_mul(t3.tensor_ones([None, self.shape[1]]),S))
-                        rounded_output_tt = t3.round_tt(output_tt, self.tt_rank)
+                        out_put_tt = t3.add(t3.scalar_tt_mul(t3.add(t3.tt_tt_matmul(t3.utils.get_element_from_batch(x, idx), self.weight), self.bias), 1/L), t3.scalar_tt_mul(t3.matrix_ones([None, self.shape[1]]), S))
+                        rounded_output_tt = t3.round(output_tt, self.init_tt_rank)
                         tt_list.append(rounded_output_tt)
+                #test_temp = t3.utils.tt_batch_from_list_of_tt(tt_list)
+                #pdb.set_trace()
                 return t3.utils.tt_batch_from_list_of_tt(tt_list)
             else:
                 raise NotImplementedError
