@@ -221,7 +221,7 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
             #gradient clipping
             if settings.CLIP_GRAD != 0:
                 clip_value = settings.CLIP_GRAD
-                nn.utils.clip_grad_norm(model.parameters(),clip_value)
+                nn.utils.clip_grad_norm(model.parameters(), clip_value)
 
             #print(optimizer.state_dict())
             #move_buffer_to_gpu(optimizer)
@@ -345,7 +345,8 @@ def main():
     if settings.GPU:
         #model = nn.DataParallel(model).cuda()
         model = model.cuda()
-        #print('model parameter:',dict(model.named_parameters()))
+        print('model parameter:', dict(model.named_parameters()))
+        #.set_trace()
 
     #print(model)
     #model.train()

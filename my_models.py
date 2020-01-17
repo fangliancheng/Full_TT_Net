@@ -21,6 +21,8 @@ class IS_FTT_1_layer_relu(nn.Module):
         x = self.ip1(x)
         x = self.ip2(x)
         x = self.to_dense(x)
+        x = torch.squeeze(x)
+        #pdb.set_trace()
         return F.log_softmax(x, dim=1)
 
 
