@@ -6,6 +6,7 @@ import torch.nn as nn
 import sys
 from ptt_vgg import *
 from my_models import *
+from model_wideresnet import WideResNet
 
 DATASET_PATH = {
     'MINIST': '',
@@ -40,6 +41,8 @@ MODEL_DICT = {
      'important_sketching_ftt_1hidden_relu_net': IS_FTT_1_layer_relu,
      'important_sketching_logistic': Logistic,
      'important_sketching_ftt_logistic': IS_FTT_Logistic,
+     'normal_logistic_cifar': normal_logistic,
+     'normal_wide_resnet_cifar': WideResNet,
  }
 
 SHAPE_DICT = {
@@ -60,8 +63,18 @@ EXTRACT_DICT = {
     'important_sketching_ftt_1hidden_relu_net': 'important_sketching',
     'important_sketching_logistic': 'important_sketching',
     'important_sketching_ftt_logistic': 'important_sketching',
+    'normal_logistic_cifar': 'normal_logistic',
+    'normal_wide_resnet_cifar': 'normal_wide_resnet',
 }
 
+FEATURE_FORM = {
+    'important_sketching_wideResnet':'dense',
+    'important_sketching_ftt_1hidden_relu_net':'tt_matrix',
+    'important_sketching_logistic':'dense',
+    'important_sketching_ftt_logistic':'tt_matrix',
+    'normal_logistic_cifar':None,
+    'normal_wide_resnet_cifar':None,
+}
 
 def skew_sym_part(m):
     return 1/2 * (m.t() - m)

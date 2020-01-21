@@ -1,6 +1,7 @@
 import argparse
 from torchvision import datasets, transforms, models
 import my_models
+from model_wideresnet import WideResNet
 import easydict as edict
 import t3nsor as t3
 from common import *
@@ -34,9 +35,9 @@ settings = edict.EasyDict({
     "WORKERS": 12,
     "BATCH_SIZE": 64,
     "PRINT_FEQ": 10,
-    "LR": 0.1,
+    "LR": 0.01,
     "EPOCHS": 45,
-    "CLIP_GRAD": 3,
+    "CLIP_GRAD": 0,
     "ITERATE_NUM": 6,
     #"TT_SHAPE": SHAPE_DICT[args.arch],
     #"TT_SHAPE": [4,8,4,8], #Shpae of Cifar 10 data is 32*32
@@ -53,7 +54,7 @@ settings = edict.EasyDict({
     #Use curr_minibatch to construct sample covariance, Alternative: full: use all training data to construct sample covariance
     #"SAMPLE_MODE": 'curr_minibatch',
     "SAMPLE_MODE": 'full',
-    "IS_OUTPUT_FORM": 'tt_matrix',
+    "IS_OUTPUT_FORM": FEATURE_FORM[args.arch],
 })
 
 device = torch.device('cuda:0')
@@ -182,6 +183,7 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
                 reduced_cov = t3.important_sketching(input, sample_covariance_tt_core_list, settings)
                 #Then use target, reduced_cov as response and new dimension-reduced feature to do supervised learning
                 input = reduced_cov
+               # print(input)
 
             data_time.update(time.time() - end)
             #for forward time
@@ -193,6 +195,7 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
                 else:
                     output = model(input)
                 forward_time.update(time.time() - end_new)
+                print('target shape:',target.shape)
                 loss = criterion(output, target)
                 #pdb.set_trace()
                 if loss > 10:
@@ -203,6 +206,9 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
                 loss.backward()
 
             #observe SVD layer gradient
+            #for name, param in model.named_parameters():
+            #    if param.requires_grad:
+            #            print(name, param.data, param.grad)
             # print('1', torch.max(model.learnable_conversion.weight_v_mm.grad), torch.min(model.learnable_conversion.weight_v_mm.grad))
             # print('2', torch.max(model.learnable_conversion.weight_u_mm.grad), torch.min(model.learnable_conversion.weight_u_mm.grad))
             # print('3', torch.max(model.learnable_conversion.weight_s_hadmard.grad), torch.min(model.learnable_conversion.weight_s_hadmard.grad))
@@ -275,7 +281,9 @@ def validate(model, val_loader, sample_covariance_tt_core_list=None):
     for i, (input, target) in enumerate(val_loader):
         target = target.to(device)
         input = input.to(device)
-        reduced_cov = t3.important_sketching(input, sample_covariance_tt_core_list, settings)
+        if settings.FEATURE_EXTRACT == 'important_sketching':
+            reduced_cov = t3.important_sketching(input, sample_covariance_tt_core_list, settings)
+            input  = reduced_cov
         #input_tt = t3.input_to_tt_tensor(input, settings)
         #if settings.GPU:
             #target = target.cuda(non_blocking=True)
@@ -286,7 +294,7 @@ def validate(model, val_loader, sample_covariance_tt_core_list=None):
 
             # compute output
             #fc_output = model(input_tt)
-            output = model(reduced_cov)
+            output = model(input)
             loss = criterion(output, target)
 
             # measure accuracy and record loss

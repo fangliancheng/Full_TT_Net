@@ -10,6 +10,19 @@ import torchvision.models as models
 import model_wideresnet
 
 
+class normal_logistic(nn.Module):
+    def __init__(self, settings):
+        super(normal_logistic, self).__init__()
+        self.ip = nn.Linear(32*32*3, 10)
+
+    def forward(self, x):
+        batch_size = x.shape[0]
+        x = torch.reshape(x, [batch_size, 32*32*3])
+        x = self.ip(x)
+        out = F.softmax(x)
+        return out
+
+
 class IS_FTT_1_layer_relu(nn.Module):
     def __init__(self, settings):
         super(IS_FTT_1_layer_relu, self).__init__()
@@ -79,13 +92,15 @@ class important_sketching_input_wideresnet(nn.Module):
     def __init__(self, settings):
         super(important_sketching_input_wideresnet, self).__init__()
         self.batch_size = settings.BATCH_SIZE
+
         self.layer1 = nn.Linear(177, 32*32*3)
         #self.layer2 =  models.__dict__['wide_resnet50_2']()
-        self.layer2 = model_wideresnet.WideResNet(depth=28, num_classes=10)
+        self.layer2 = model_wideresnet.WideResNet(settings, depth=28, num_classes=10)
         #self.fc = nn.Linear(1000,10)
         self.shape = [self.batch_size, 3, 32, 32]
 
     def forward(self, x):
+
         x = self.layer1(x)
         x = torch.reshape(x, shape=self.shape)
         x = self.layer2(x)
@@ -218,12 +233,22 @@ class IS_FTT_Logistic(nn.Module):
     def __init__(self, settings):
         super(IS_FTT_Logistic, self).__init__()
         self.ip1 = t3.FTTLinear(in_features=177, out_features=10)
+        self.ip2 = nn.Linear(in_features=666, out_features=10)
         self.to_dense = t3.layers.tt_to_dense()
 
     def forward(self, x):
         x = self.ip1(x)
-        x = self.to_dense(x)
-        return F.log_softmax(x, dim=1)
+        #pdb.set_trace()
+        re = [torch.reshape(tt_core, (64,-1)) for tt_core in x.tt_cores]
+        x = torch.cat(re,dim=1)
+        x = self.ip2(x)
+       # pdb.set_trace()
+       # x = self.to_dense(x)
+
+        #x = torch.squeeze(x, dim=1)
+
+        return x
+
 
 
 #tensorizing neural network, Alexander et al 2015

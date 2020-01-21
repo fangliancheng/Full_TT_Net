@@ -38,24 +38,25 @@ class BasicBlock(nn.Module):
 
 
 class NetworkBlock(nn.Module):
-  def __init__(self, nb_layers, in_planes, out_planes, block, stride, dropRate=0.0):
-    super(NetworkBlock, self).__init__()
-    self.layer = self._make_layer(
-        block, in_planes, out_planes, nb_layers, stride, dropRate)
 
-  def _make_layer(self, block, in_planes, out_planes, nb_layers, stride, dropRate):
-    layers = []
-    for i in range(nb_layers):
-        layers.append(block(i == 0 and in_planes or out_planes,
+    def __init__(self, nb_layers, in_planes, out_planes, block, stride, dropRate=0.0):
+        super(NetworkBlock, self).__init__()
+
+        self.layer = self._make_layer(block, in_planes, out_planes, nb_layers, stride, dropRate)
+
+    def _make_layer(self, block, in_planes, out_planes, nb_layers, stride, dropRate):
+        layers = []
+        for i in range(nb_layers):
+            layers.append(block(i == 0 and in_planes or out_planes,
                             out_planes, i == 0 and stride or 1, dropRate))
-    return nn.Sequential(*layers)
+        return nn.Sequential(*layers)
 
-  def forward(self, x):
-    return self.layer(x)
+    def forward(self, x):
+        return self.layer(x)
 
 
 class WideResNet(nn.Module):
-  def __init__(self, depth, num_classes, widen_factor=1, drop_rate=0.0, init_scale=1.0):
+  def __init__(self, settings, depth=28, num_classes=10, widen_factor=1, drop_rate=0.0, init_scale=1.0):
     super(WideResNet, self).__init__()
 
     nChannels = [16, 16 * widen_factor,
