@@ -682,7 +682,7 @@ class FTT_Solver(nn.Module):
         return weight_tt, bias_tt
 
     def forward(self, x):
-        print('bias parameter:', self.bias)
+       #ZZ print('bias parameter:', self.bias)
         if self.bias is None:
             print('not implemented error')
         else:
@@ -699,7 +699,7 @@ class FTT_Solver(nn.Module):
                         rounded_output_tt = t3.round(output_tt, self.init_tt_rank)
                         tt_list.append(rounded_output_tt)
                     else:
-                        out_put_tt = t3.add(t3.scalar_tt_mul(t3.add(t3.tt_tt_matmul(t3.utils.get_element_from_batch(x, idx), self.weight), self.bias), 1/L), t3.scalar_tt_mul(t3.matrix_ones([None, self.shape[1]]), S))
+                        output_tt = t3.add(t3.scalar_tt_mul(t3.add(t3.tt_tt_matmul(t3.utils.get_element_from_batch(x, idx), self.weight), self.bias), 1/L), t3.scalar_tt_mul(t3.matrix_ones([None, self.shape[1]]), S))
                         rounded_output_tt = t3.round(output_tt, self.init_tt_rank)
                         tt_list.append(rounded_output_tt)
                 #test_temp = t3.utils.tt_batch_from_list_of_tt(tt_list)

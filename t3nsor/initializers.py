@@ -137,11 +137,12 @@ def matrix_ones(shape, dtype=torch.float32):
     if shape[0] is None:
         equi_tensor = t3.tensor_ones(shape[1])
         new_cores = [torch.unsqueeze(curr_core, dim=1) for curr_core in equi_tensor.tt_cores]
-    if shape[1] is None:
+    elif shape[1] is None:
         equi_tensor = t3.tensor_ones(shape[0])
         new_cores = [torch.unsqueeze(curr_core, dim=2) for curr_core in equi_tensor.tt_cores]
     else:
         print("Wrong shape!")
+        print("shape", shape)
     return TensorTrain(new_cores)
 
 

@@ -155,7 +155,7 @@ def _round_tt(tt, max_tt_rank, epsilon):
         if len(max_tt_rank) != ndims + 1:
             raise ValueError('max_tt_rank should be a number or a vector of size (d+1) ''where d is the number of dimensions (rank) of the tensor.')
     except:
-        print('except occurs! good.')
+        #print('except occurs! good.')
         max_tt_rank = (max_tt_rank * np.ones(ndims + 1)).astype(np.int32)
 
     raw_shape = tt.raw_shape
@@ -359,9 +359,16 @@ def _orthogonalize_tt_cores_left_to_right(tt):
 
         qr_shape = (curr_rank * curr_mode, next_rank)
         curr_core = torch.reshape(curr_core, qr_shape)
-        curr_core, triang = torch.qr(curr_core, some=True)
-        if triang.shape[0] != triang.shape[1]:
-            print("R is not a square matrix!")
+        # curr_core, triang = torch.qr(curr_core, some=True)
+        """pytorch does not support backprop of qr decomposition for flat matrix, now we naively use svd to approximate qr"""
+        """a = qr,  a = usv^T, q = u, r = sv^T """
+        uu, ss, vv = torch.svd(curr_core, some=True)
+        curr_core = uu
+        triang = torch.mm(torch.diag(ss), vv.permute(1,0))
+
+
+        #if triang.shape[0] != triang.shape[1]:
+        #    print("R is not a square matrix!")
         #if triang.get_shape().is_fully_defined():
         triang_shape = list(triang.shape)
         #else:

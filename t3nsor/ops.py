@@ -245,6 +245,9 @@ def _add_matrix_cores(tt_a, tt_b, gpu=True):
     for core_idx in range(ndims):
         a_core = tt_a.tt_cores[core_idx]
         b_core = tt_b.tt_cores[core_idx]
+        if gpu:
+            a_core = a_core.to('cuda')
+            b_core = b_core.to('cuda')
         if core_idx == 0:
             curr_core = torch.cat((a_core, b_core), dim=3)
         elif core_idx == ndims - 1:
