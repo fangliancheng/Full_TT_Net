@@ -8,7 +8,7 @@ import torch.nn.functional as F
 import pdb
 import torchvision.models as models
 import model_wideresnet
-
+from t3nsor import TensorTrainBatch
 
 class normal_logistic(nn.Module):
     def __init__(self, settings):
@@ -21,6 +21,72 @@ class normal_logistic(nn.Module):
         x = self.ip(x)
         out = F.softmax(x)
         return out
+
+
+#last layer is an element wise linear layer instead of tt_to_dense procedure, intended to avoid gradient exploding
+class IS_FTT_multi_layer_relu_l(nn.Module):
+    def __init__(self, settings):
+        super(IS_FTT_multi_layer_relu_l, self).__init__()
+        self.ip1 = t3.FTT_Solver(in_features=177, out_features=2000,
+                                     shape=[[3, 4, 8, 4, 8], [1, 2, 50, 20, 1]], tt_rank=3)
+        self.ip2 = t3.FTT_Solver(in_features=2000, out_features=2000,
+                                     shape=[[1, 2, 50, 20, 1], [1, 2, 50, 20, 1]], tt_rank=3)
+        self.ip3 = t3.FTT_Solver(in_features=2000, out_features=2000,
+                                     shape=[[1, 2, 50, 20, 1], [1, 2, 50, 20, 1]], tt_rank=3)
+        self.ip4 = t3.FTT_Solver(in_features=2000, out_features=2000,
+                                     shape=[[1, 2, 50, 20, 1], [1, 2, 50, 20, 1]], tt_rank=3)
+        self.ip5 = t3.FTT_Solver(in_features=2000, out_features=2000,
+                                     shape=[[1, 2, 50, 20, 1], [1, 2, 50, 20, 1]], tt_rank=3)
+        self.ip6 = t3.FTT_Solver(in_features=2000, out_features=10, shape=[[1, 2, 50, 20, 1], [1, 2, 5, 1, 1]], tt_rank=3)
+        #self.ip_ult_linear = nn.Linear(in_features=366, out_features=10)
+        self.batch_size = settings.BATCH_SIZE
+        self.tt_to_dense = t3.layers.tt_to_dense()
+
+    def forward(self, x):
+        #pdb.set_trace()
+        #TODO: customize nn.DataParallel to simplify code, now we are doing repeat work of conversion
+        #from dense to TensorTrainBatch
+
+        x_1 = x[:,0:9].view(-1,3,3)
+        x_2 = x[:,9:9+36].view(-1,3,4,3)
+        x_3 = x[:,45:72+45].view(-1,3,8,3)
+        x_4 = x[:,117:117+36].view(-1,3,4,3)
+        x_5 = x[:,153:153+24].view(-1,3,8)
+
+        x_1 = torch.unsqueeze(x_1, dim=1)
+        x_1 = torch.unsqueeze(x_1, dim=1)
+        x_2 = torch.unsqueeze(x_2, dim=2)
+        x_3 = torch.unsqueeze(x_3, dim=2)
+        x_4 = torch.unsqueeze(x_4, dim=2)
+        x_5 = torch.unsqueeze(x_5, dim=-1)
+        x_5 = torch.unsqueeze(x_5, dim=2)
+        #pdb.set_trace()
+
+        cov_list = []
+        cov_list.append(x_1)
+        cov_list.append(x_2)
+        cov_list.append(x_3)
+        cov_list.append(x_4)
+        cov_list.append(x_5)
+
+        x  = t3.TensorTrainBatch(cov_list)
+
+        x = self.ip1(x)
+        x = self.ip2(x)
+        x = self.ip3(x)
+        x = self.ip4(x)
+        x = self.ip5(x)
+
+        """last linear layer"""
+        #re = [torch.reshape(tt_core, (int(self.batch_size/torch.cuda.device_count()), -1)) for tt_core in x.tt_cores]
+        #x = torch.cat(re, dim=1)
+        #x = self.ip_ult_linear(x)
+
+        """last tt_to_dense layer"""
+        x = self.ip6(x)
+        x = self.tt_to_dense(x)
+        x = torch.squeeze(x)
+        return F.log_softmax(x, dim=1)
 
 
 class IS_FTT_1_layer_relu(nn.Module):

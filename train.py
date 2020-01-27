@@ -18,7 +18,7 @@ import math
 parser = argparse.ArgumentParser(description='PyTorch')
 parser.add_argument('--arch', default='important_sketching_ftt_1hidden_relu_net', type=str, help='arch')
 parser.add_argument('--dataset', default='CIFAR10', type=str, help='dataset')
-parser.add_argument('--mark', default='t5', type=str, help='mark')
+parser.add_argument('--mark', default='t5_5tt_relu', type=str, help='mark')
 #parser.add_argument('--gpu', default='1', type=int, help='GPU id to use.')
 args = parser.parse_args()
 
@@ -35,7 +35,7 @@ settings = edict.EasyDict({
     "WORKERS": 12,
     "BATCH_SIZE": 64,
     "PRINT_FEQ": 10,
-    "LR": 0.01,
+    "LR": 0.1,
     "EPOCHS": 45,
     "CLIP_GRAD": 0,
     "ITERATE_NUM": 6,
@@ -55,6 +55,7 @@ settings = edict.EasyDict({
     #"SAMPLE_MODE": 'curr_minibatch',
     "SAMPLE_MODE": 'full',
     "IS_OUTPUT_FORM": FEATURE_FORM[args.arch],
+    "PGD": True,
 })
 
 device = torch.device('cuda:0')
@@ -195,7 +196,7 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
                 else:
                     output = model(input)
                 forward_time.update(time.time() - end_new)
-                print('target shape:',target.shape)
+                #print('target shape:', target.shape)
                 loss = criterion(output, target)
                 #pdb.set_trace()
                 if loss > 10:
@@ -232,6 +233,29 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
             #print(optimizer.state_dict())
             #move_buffer_to_gpu(optimizer)
             optimizer.step()
+            def PGD(m):
+                if t3.frobenius_norm_squared(m.module.ip1.weight) > 1:
+                    for core_idx in range(5):
+                        m.module.ip1.weight.tt_cores[core_idx].data = m.module.ip1.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+                if t3.frobenius_norm_squared(m.module.ip2.weight) > 1:
+                    for core_idx in range(5):
+                        m.module.ip2.weight.tt_cores[core_idx].data = m.module.ip2.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+                if t3.frobenius_norm_squared(m.module.ip3.weight) > 1:
+                    for core_idx in range(5):
+                        m.module.ip3.weight.tt_cores[core_idx].data = m.module.ip3.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+                if t3.frobenius_norm_squared(m.module.ip4.weight) > 1:
+                    for core_idx in range(5):
+                        m.module.ip4.weight.tt_cores[core_idx].data = m.module.ip4.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+                if t3.frobenius_norm_squared(m.module.ip5.weight) > 1:
+                    for core_idx in range(5):
+                        m.module.ip5.weight.tt_cores[core_idx].data = m.module.ip5.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+                if t3.frobenius_norm_squared(m.module.ip6.weight) > 1:
+                    for core_idx in range(5):
+                        m.module.ip6.weight.tt_cores[core_idx].data = m.module.ip6.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+
+
+            if settings.PGD:
+                PGD(model)
 
             # measure elapsed time
             batch_time.update(time.time() - end)
@@ -299,9 +323,9 @@ def validate(model, val_loader, sample_covariance_tt_core_list=None):
 
             # measure accuracy and record loss
             prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-        losses.update(loss.item(), input.size(0))
-        top1.update(prec1.item(), input.size(0))
-        top5.update(prec5.item(), input.size(0))
+        losses.update(loss.item(), settings.BATCH_SIZE)
+        top1.update(prec1.item(), settings.BATCH_SIZE)
+        top5.update(prec5.item(), settings.BATCH_SIZE)
 
         if i % settings.PRINT_FEQ == 0:
             print('Val: [{0}/{1}]\t'
@@ -317,7 +341,7 @@ def validate(model, val_loader, sample_covariance_tt_core_list=None):
 
 
 def main():
-    print('current GPU:', torch.cuda.current_device())
+    #print('current GPU:', torch.cuda.current_device())
     # val_loader = imagenet_loader(settings, 'val')
     # train_loader = imagenet_loader(settings, 'train', shuffle=True, data_augment=True)
     val_loader = cifar_loader(settings, 'val')
@@ -352,8 +376,12 @@ def main():
 
     if settings.GPU:
         #model = nn.DataParallel(model).cuda()
-        model = model.cuda()
-        print('model parameter:', dict(model.named_parameters()))
+        #model = model.cuda()
+        model = nn.DataParallel(model)
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        model = model.to(device)
+        assert(torch.cuda.device_count() > 1)
+        #print('model parameter:', dict(model.named_parameters()))
         #.set_trace()
 
     #print(model)
