@@ -459,6 +459,11 @@ def tt_tt_matmul(tt_matrix_a, tt_matrix_b, convert_to_tensors=False):
         a_core = tt_matrix_a.tt_cores[core_idx]
         b_core = tt_matrix_b.tt_cores[core_idx]
 
+       # pdb.set_trace()
+       # assert(a_core.device==b_core.device)
+        if a_core.device != b_core.device:
+            b_core = b_core.to(a_core.device)
+        assert(a_core.device==b_core.device)
         curr_res_core = torch.einsum(einsum_str, a_core, b_core)
 
         res_left_rank = a_ranks[core_idx] * b_ranks[core_idx]

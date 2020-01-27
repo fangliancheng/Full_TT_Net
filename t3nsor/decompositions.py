@@ -4,6 +4,7 @@ import torch
 from t3nsor.tensor_train import TensorTrain
 from t3nsor.tensor_train import TensorTrainBatch
 from t3nsor.utils import svd_fix
+from numpy import linalg as LA
 import pdb
 
 
@@ -191,11 +192,12 @@ def _round_tt(tt, max_tt_rank, epsilon):
                 min_dim = torch.min(rows, columns)
                 ranks[core_idx] = torch.min(max_tt_rank[core_idx], min_dim)
                 are_tt_ranks_defined = False
-        u, s, v = torch.svd(curr_core, some=True)
-        #pdb.set_trace()
-        u = u[:, 0:ranks[core_idx]]
-        s = s[0:ranks[core_idx]]
-        v = v[:, 0:ranks[core_idx]]
+        print("svd matrix cond num checking, line195: cond num:", LA.cond(curr_core.cpu().data.numpy()))
+        uu, ss, vv = torch.svd(curr_core, some=True)
+       # pdb.set_trace()
+        u = uu[:, 0:ranks[core_idx]]
+        s = ss[0:ranks[core_idx]]
+        v = vv[:, 0:ranks[core_idx]]
         if tt.is_tt_matrix:
             core_shape = (ranks[core_idx], curr_mode_left, curr_mode_right,
                           ranks[core_idx + 1])
@@ -268,8 +270,11 @@ def _round_batch_tt(tt, max_tt_rank, epsilon):
                 min_dim = torch.min(rows, columns)
                 ranks[core_idx] = torch.min(max_tt_rank[core_idx], min_dim)
                 are_tt_ranks_defined = False
+
+        print("svd matrix cond num checking, line274: cond num:", LA.cond(curr_core.cpu().data.numpy()))
+
         s, u, v = torch.svd(curr_core, some=True)
-        #TODO: check pytorch supports batch-svd
+
         u = u[:, :, 0:ranks[core_idx]]
         s = s[:, 0:ranks[core_idx]]
         v = v[:, :, 0:ranks[core_idx]]
@@ -360,6 +365,9 @@ def _orthogonalize_tt_cores_left_to_right(tt):
         qr_shape = (curr_rank * curr_mode, next_rank)
         curr_core = torch.reshape(curr_core, qr_shape)
         # curr_core, triang = torch.qr(curr_core, some=True)
+
+        print("svd matrix cond num checking, line369: cond num:", LA.cond(curr_core.cpu().data.numpy()))
+
         """pytorch does not support backprop of qr decomposition for flat matrix, now we naively use svd to approximate qr"""
         """a = qr,  a = usv^T, q = u, r = sv^T """
         uu, ss, vv = torch.svd(curr_core, some=True)
@@ -513,5 +521,4 @@ def _orthogonalize_tt_cores_right_to_left(tt):
     else:
         first_core_shape = (1, raw_shape[0][0], prev_rank)
     tt_cores[0] = torch.reshape(tt_cores[0], first_core_shape)
-    # TODO: infer the tt_ranks.
     return TensorTrain(tt_cores, tt.raw_shape)

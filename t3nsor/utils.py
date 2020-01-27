@@ -81,6 +81,7 @@ def important_sketching(mini_batch, cov_tt_cores, settings):
     x_5 = torch.einsum('bcrog, cr->bog', x_5, pinverse_cov_tt_cores[0]).view(settings.BATCH_SIZE, settings.TT_RANK, 8)
 
     if settings.IS_OUTPUT_FORM == 'dense':
+        #pdb.set_trace()
         #concatenate x_1,..,x_d to be the dimension reduced features
         cov_list.append(x_1.view(settings.BATCH_SIZE, -1))
         cov_list.append(x_2.view(settings.BATCH_SIZE, -1))
@@ -99,6 +100,7 @@ def important_sketching(mini_batch, cov_tt_cores, settings):
         x_5 = torch.unsqueeze(x_5, dim=-1)
         x_5 = torch.unsqueeze(x_5, dim=2)
 
+        #pdb.set_trace)
         cov_list.append(x_1)
         cov_list.append(x_2)
         cov_list.append(x_3)
