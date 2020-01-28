@@ -144,7 +144,7 @@ def round(tt, max_tt_rank=None, epsilon=None, name='t3f_round'):
 
 def _round_tt(tt, max_tt_rank, epsilon):
     """Internal function that rounds a TensorTrain (not batch).
-    See t3f.round for details.
+    See t3f.round for initial implementation.
     """
     ndims = tt.ndims
     max_tt_rank = np.array(max_tt_rank).astype(np.int32)
@@ -156,45 +156,53 @@ def _round_tt(tt, max_tt_rank, epsilon):
         if len(max_tt_rank) != ndims + 1:
             raise ValueError('max_tt_rank should be a number or a vector of size (d+1) ''where d is the number of dimensions (rank) of the tensor.')
     except:
-        #print('except occurs! good.')
+        #When max_tt_rank is a scalar
         max_tt_rank = (max_tt_rank * np.ones(ndims + 1)).astype(np.int32)
 
     raw_shape = tt.raw_shape
 
-    tt_cores = orthogonalize_tt_cores(tt).tt_cores
-    # Copy cores references so we can change the cores.
-    tt_cores = list(tt_cores)
+    tt, curr_core_list_orth = orthogonalize_tt_cores(tt)
+    tt_cores = tt.tt_cores
+    # # Copy cores references so we can change the cores.
+    # tt_cores = list(tt_cores)
 
     ranks = [1] * (ndims + 1)
-    are_tt_ranks_defined = True
+
+    curr_core_list = []
     # Right to left SVD compression.
     for core_idx in range(ndims - 1, 0, -1):
+
         curr_core = tt_cores[core_idx]
         if tt.is_tt_matrix:
             curr_mode_left = raw_shape[0][core_idx]
             curr_mode_right = raw_shape[1][core_idx]
             curr_mode = curr_mode_left * curr_mode_right
         else:
-            curr_mode = raw_shape[0][core_idx]
+            #curr_mode = raw_shape[0][core_idx]
+            curr_mode = raw_shape[core_idx]
 
         columns = curr_mode * ranks[core_idx + 1]
         curr_core = torch.reshape(curr_core, [-1, columns])
         rows = curr_core.shape[0]
-        if rows is None:
-            rows = curr_core.shape[0]
+
         if max_tt_rank[core_idx] == 1:
             ranks[core_idx] = 1
         else:
-            try:
-                ranks[core_idx] = min(max_tt_rank[core_idx], rows, columns)
-            except TypeError:
-                #in case max_tt_rank is not np.array, but torch.tensor
-                min_dim = torch.min(rows, columns)
-                ranks[core_idx] = torch.min(max_tt_rank[core_idx], min_dim)
-                are_tt_ranks_defined = False
-        print("svd matrix cond num checking, line195: cond num:", LA.cond(curr_core.cpu().data.numpy()))
+            ranks[core_idx] = min(max_tt_rank[core_idx], rows, columns)
+            # try:
+            #     ranks[core_idx] = min(max_tt_rank[core_idx], rows, columns)
+            # except TypeError:
+            #     print('tpye error occurs')
+            #     #in case max_tt_rank is not np.array, but torch.tensor
+            #     min_dim = torch.min(rows, columns)
+            #     ranks[core_idx] = torch.min(max_tt_rank[core_idx], min_dim)
+
+        if LA.cond(curr_core.cpu().data.numpy()) > 1000:
+            print("svd matrix cond num exploding at round_tt! Cond num:", LA.cond(curr_core.cpu().data.numpy()))
+        curr_core_list.append(curr_core)
+
         uu, ss, vv = torch.svd(curr_core, some=True)
-       # pdb.set_trace()
+
         u = uu[:, 0:ranks[core_idx]]
         s = ss[0:ranks[core_idx]]
         v = vv[:, 0:ranks[core_idx]]
@@ -214,9 +222,8 @@ def _round_tt(tt, max_tt_rank, epsilon):
     else:
         core_shape = (ranks[0], raw_shape[0][0], ranks[1])
     tt_cores[0] = torch.reshape(tt_cores[0], core_shape)
-    if not are_tt_ranks_defined:
-        ranks = None
-    return TensorTrain(tt_cores, tt.raw_shape, ranks)
+
+    return TensorTrain(tt_cores), curr_core_list, curr_core_list_orth
 
 
 def _round_batch_tt(tt, max_tt_rank, epsilon):
@@ -271,7 +278,8 @@ def _round_batch_tt(tt, max_tt_rank, epsilon):
                 ranks[core_idx] = torch.min(max_tt_rank[core_idx], min_dim)
                 are_tt_ranks_defined = False
 
-        print("svd matrix cond num checking, line274: cond num:", LA.cond(curr_core.cpu().data.numpy()))
+        #not calling
+        #print("svd matrix cond num checking, line274: cond num:", LA.cond(curr_core.cpu().data.numpy()))
 
         s, u, v = torch.svd(curr_core, some=True)
 
@@ -348,7 +356,11 @@ def _orthogonalize_tt_cores_left_to_right(tt):
     next_rank = tt_ranks[0]
     # Copy cores references so we can change the cores.
     tt_cores = list(tt.tt_cores)
+
+    # store curr_core
+    curr_core_list = []
     for core_idx in range(ndims - 1):
+
         curr_core = tt_cores[core_idx]
         # TT-ranks could have changed on the previous iteration, so `tt_ranks` can
         # be outdated for the current TT-rank, but should be valid for the next
@@ -366,7 +378,9 @@ def _orthogonalize_tt_cores_left_to_right(tt):
         curr_core = torch.reshape(curr_core, qr_shape)
         # curr_core, triang = torch.qr(curr_core, some=True)
 
-        print("svd matrix cond num checking, line369: cond num:", LA.cond(curr_core.cpu().data.numpy()))
+        if LA.cond(curr_core.cpu().data.numpy()) > 1000:
+            print("svd matrix cond num exploding at orthognalization! Cond num:", LA.cond(curr_core.cpu().data.numpy()))
+        curr_core_list.append(curr_core)
 
         """pytorch does not support backprop of qr decomposition for flat matrix, now we naively use svd to approximate qr"""
         """a = qr,  a = usv^T, q = u, r = sv^T """
@@ -399,7 +413,7 @@ def _orthogonalize_tt_cores_left_to_right(tt):
     else:
         last_core_shape = (next_rank, raw_shape[0][-1], 1)
     tt_cores[-1] = torch.reshape(tt_cores[-1], last_core_shape)
-    return TensorTrain(tt_cores, tt.raw_shape)
+    return TensorTrain(tt_cores, tt.raw_shape), curr_core_list
 
 
 def _orthogonalize_batch_tt_cores_left_to_right(tt):

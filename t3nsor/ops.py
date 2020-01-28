@@ -488,7 +488,7 @@ def tt_tt_matmul(tt_matrix_a, tt_matrix_b, convert_to_tensors=False):
 
 
 #TODO: add dense_tt_matmul
-def tt_dense_matmul(tt_matrix_a, matrix_b,convert_to_tensors=False):
+def tt_dense_matmul(tt_matrix_a, matrix_b, convert_to_tensors=False):
     """Multiplies a TT-matrix by a regular matrix, returns a regular matrix.
     Args:
     tt_matrix_a: `TensorTrain` object containing a TT-matrix of size M x N
@@ -502,7 +502,7 @@ def tt_dense_matmul(tt_matrix_a, matrix_b,convert_to_tensors=False):
     b_rows = matrix_b.shape[0]
     if a_columns is not None and b_rows is not None:
         if a_columns != b_rows:
-            raise ValueError('Arguments shapes should align got %d and %d instead.' %(tt_matrix_a.shape, matrix_b.shape))
+            raise ValueError('Arguments shapes should align got %d and %d instead.' % (tt_matrix_a.shape, matrix_b.shape))
 
     a_shape = tt_matrix_a.shape
     a_raw_shape = tt_matrix_a.raw_shape

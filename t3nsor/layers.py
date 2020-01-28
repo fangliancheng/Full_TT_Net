@@ -638,6 +638,8 @@ class FTT_Solver(nn.Module):
         self.S = s
         self.epsilon = epsilon
         self.out_features = out_features
+        self.svd_matrix_round = None
+        self.svd_matrix_orth = None
 
         if bias:
             #self.bias = torch.nn.Parameter(1e-2 * torch.ones(out_features))
@@ -682,7 +684,7 @@ class FTT_Solver(nn.Module):
         return weight_tt, bias_tt
 
     def forward(self, x):
-       #ZZ print('bias parameter:', self.bias)
+
         if self.bias is None:
             print('not implemented error')
         else:
@@ -694,29 +696,29 @@ class FTT_Solver(nn.Module):
                 tt_list = []
                 for idx in range(batch_size):
                     if f_norm[idx] > self.epsilon:
-                        #pdb.set_trace()
+
                         output_tt = t3.scalar_tt_mul(t3.add(t3.tt_tt_matmul(t3.utils.get_element_from_batch(x, idx), self.weight), self.bias), 1/L)
-                        rounded_output_tt = t3.round(output_tt, self.init_tt_rank)
+                        rounded_output_tt, self.svd_matrix_round, self.svd_matrix_orth = t3.round(output_tt, self.init_tt_rank)
+                        #pdb.set_trace()
                         tt_list.append(rounded_output_tt)
                     else:
                         output_tt = t3.add(t3.scalar_tt_mul(t3.add(t3.tt_tt_matmul(t3.utils.get_element_from_batch(x, idx), self.weight), self.bias), 1/L), t3.scalar_tt_mul(t3.matrix_ones([None, self.shape[1]]), S))
-                        rounded_output_tt = t3.round(output_tt, self.init_tt_rank)
+                        rounded_output_tt, self.svd_matrix_round, self.svd_matrix_orth = t3.round(output_tt, self.init_tt_rank)
                         tt_list.append(rounded_output_tt)
-                #test_temp = t3.utils.tt_batch_from_list_of_tt(tt_list)
-                #pdb.set_trace()
-                return t3.utils.tt_batch_from_list_of_tt(tt_list)
+
+                return t3.utils.tt_batch_from_list_of_tt(tt_list), self.svd_matrix_round, self.svd_matrix_orth
             else:
                 raise NotImplementedError
-            # iter_num > 1
-                pdb.set_trace()
-                if t3.frobenius_norm_squared(x) > self.epsilon:
-                    x_l = 1/L*(t3.tt_tt_matmul(x, self.weight) + self.bias)
-                else:
-                    x_l = 1/L*(t3.tt_tt_matmul(x, self.weight) + self.bias) + S*torch.ones(self.out_features)
-            for i in range(1, self.iter_num):
-                if torch.norm(x_l) > self.epsilon:
-                    x_l = x_l - 1/L*t3.tt_tt_matmul(t3.tt_tt_matmul(self.weight, self.weight), x_l) + 1/L*t3.tt_tt_matmul(x, self.weight) + self.bias
-                else:
-                    #add a random TT matrix
-                    x_l = x_l - 1/L*t3.tt_tt_matmul(t3.tt_tt_matmul(self.weight, self.weight), x_l) + 1/L*t3.tt_tt_matmul(x, self.weight) + self.bias + S*torch.ones(self.out_features)
-            return x_l
+            # # iter_num > 1
+            #     pdb.set_trace()
+            #     if t3.frobenius_norm_squared(x) > self.epsilon:
+            #         x_l = 1/L*(t3.tt_tt_matmul(x, self.weight) + self.bias)
+            #     else:
+            #         x_l = 1/L*(t3.tt_tt_matmul(x, self.weight) + self.bias) + S*torch.ones(self.out_features)
+            # for i in range(1, self.iter_num):
+            #     if torch.norm(x_l) > self.epsilon:
+            #         x_l = x_l - 1/L*t3.tt_tt_matmul(t3.tt_tt_matmul(self.weight, self.weight), x_l) + 1/L*t3.tt_tt_matmul(x, self.weight) + self.bias
+            #     else:
+            #         #add a random TT matrix
+            #         x_l = x_l - 1/L*t3.tt_tt_matmul(t3.tt_tt_matmul(self.weight, self.weight), x_l) + 1/L*t3.tt_tt_matmul(x, self.weight) + self.bias + S*torch.ones(self.out_features)
+            # return x_l
