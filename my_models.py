@@ -47,11 +47,11 @@ class IS_FTT_multi_layer_relu_l(nn.Module):
         #TODO: customize nn.DataParallel to simplify code, now we are doing repeat work of conversion
         #from dense to TensorTrainBatch
 
-        x_1 = x[:,0:9].view(-1,3,3)
-        x_2 = x[:,9:9+36].view(-1,3,4,3)
-        x_3 = x[:,45:72+45].view(-1,3,8,3)
-        x_4 = x[:,117:117+36].view(-1,3,4,3)
-        x_5 = x[:,153:153+24].view(-1,3,8)
+        x_1 = x[:, 0:9].view(-1,3,3)
+        x_2 = x[:, 9:9+36].view(-1,3,4,3)
+        x_3 = x[:, 45:72+45].view(-1,3,8,3)
+        x_4 = x[:, 117:117+36].view(-1,3,4,3)
+        x_5 = x[:, 153:153+24].view(-1,3,8)
 
         x_1 = torch.unsqueeze(x_1, dim=1)
         x_1 = torch.unsqueeze(x_1, dim=1)
@@ -69,24 +69,38 @@ class IS_FTT_multi_layer_relu_l(nn.Module):
         cov_list.append(x_4)
         cov_list.append(x_5)
 
-        x  = t3.TensorTrainBatch(cov_list)
+        x = t3.TensorTrainBatch(cov_list)
 
-        x = self.ip1(x)
-        x = self.ip2(x)
-        x = self.ip3(x)
-        x = self.ip4(x)
-        x = self.ip5(x)
-
+        svd_matrix_list = []
+        x, m1, m2 = self.ip1(x)
+        #pdb.set_trace()
+        svd_matrix_list.append(m1)
+        svd_matrix_list.append(m2)
+        x, m1, m2 = self.ip2(x)
+        svd_matrix_list.append(m1)
+        svd_matrix_list.append(m2)
+        x, m1, m2 = self.ip3(x)
+        svd_matrix_list.append(m1)
+        svd_matrix_list.append(m2)
+        x, m1, m2 = self.ip4(x)
+        svd_matrix_list.append(m1)
+        svd_matrix_list.append(m2)
+        x, m1, m2 = self.ip5(x)
+        svd_matrix_list.append(m1)
+        svd_matrix_list.append(m2)
         """last linear layer"""
         #re = [torch.reshape(tt_core, (int(self.batch_size/torch.cuda.device_count()), -1)) for tt_core in x.tt_cores]
         #x = torch.cat(re, dim=1)
         #x = self.ip_ult_linear(x)
 
         """last tt_to_dense layer"""
-        x = self.ip6(x)
+        x, m1, m2 = self.ip6(x)
+        svd_matrix_list.append(m1)
+        svd_matrix_list.append(m2)
         x = self.tt_to_dense(x)
         x = torch.squeeze(x)
-        return F.log_softmax(x, dim=1)
+        #pdb.set_trace()
+        return F.log_softmax(x, dim=1), svd_matrix_list
 
 
 class IS_FTT_1_layer_relu(nn.Module):

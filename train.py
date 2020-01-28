@@ -35,7 +35,7 @@ settings = edict.EasyDict({
     "WORKERS": 12,
     "BATCH_SIZE": 64,
     "PRINT_FEQ": 10,
-    "LR": 0.1,
+    "LR": 0.01,
     "EPOCHS": 45,
     "CLIP_GRAD": 0,
     "ITERATE_NUM": 6,
@@ -68,50 +68,6 @@ else:
 
 settings.OUTPUT_FOLDER = "result/pytorch_{}_{}_{}".format(args.arch, args.mark, args.dataset)
 snapshot_dir = dir(os.path.join(settings.OUTPUT_FOLDER, 'snapshot'))
-
-
-# def sample_test(settings, train_loader, val_loader, dir=None):
-#     # get some random training images
-#     dataiter = iter(train_loader)
-#     input,target = dataiter.next()
-#
-#     if settings.GPU:
-#         target = target.to(device=device)
-#         input = input.to(device=device)
-#
-#     if settings.FEATURE_EXTRACT == 'tt' and settings.BENCHMARK == False:
-#         input_tt = t3.input_to_tt_tensor(input, settings)
-#     if settings.BENCHMARK:
-#         input_tt = input
-#
-#     if settings.GPU:
-#         criterion = nn.CrossEntropyLoss().cuda()
-#     else:
-#         criterion = nn.CrossEntropyLoss()
-#     num_sample = 0
-#     loss = 666
-#     while loss > 3.99:
-#         if settings.BENCHMARK==True:
-#             model = my_models.slp(settings)
-#             def weights_init(m):
-#                 if isinstance(m, nn.Linear):
-#                     nn.init.xavier_normal(m.weight,gain=15)
-#                     #nn.init.kaiming_normal_(m.weight, a=math.sqrt(5))
-#                     #torch.nn.init.uniform_(m.weight,a=-10,b=10)
-#                     torch.nn.init.zeros_(m.bias)
-#             model.apply(weights_init)
-#         else:
-#             model = settings.CNN_MODEL(settings)
-#         #print(model)
-#         if settings.GPU:
-#         #model = nn.DataParallel(model).cuda()
-#             model = model.cuda()
-#             #print('model parameter:',dict(model.named_parameters()))
-#         output = model(input_tt)
-#         loss = criterion(output, target)
-#         num_sample+=1
-#         print('TT', 'num_sample:', num_sample, 'loss:', loss)
-#     print("reject sampling succeed!!!")
 
 
 def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_list=None):
@@ -168,8 +124,7 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
         end = time.time()
 
         for batch_idx, (input, target) in enumerate(train_loader):
-            #input = torch.FloatTensor(input)
-            #target = torch.FloatTensor(target)
+
             if settings.GPU:
                 target = target.to(device=device)
                 input = input.to(device=device)
@@ -184,7 +139,6 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
                 reduced_cov = t3.important_sketching(input, sample_covariance_tt_core_list, settings)
                 #Then use target, reduced_cov as response and new dimension-reduced feature to do supervised learning
                 input = reduced_cov
-               # print(input)
 
             data_time.update(time.time() - end)
             #for forward time
@@ -194,11 +148,24 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
                 if settings.FEATURE_EXTRACT == 'tt':
                     output = model(input_tt)
                 else:
-                    output = model(input)
+                    output, svd_matrix_list = model(input)
                 forward_time.update(time.time() - end_new)
-                #print('target shape:', target.shape)
-                loss = criterion(output, target)
-                #pdb.set_trace()
+
+                def my_loss(matrix_list, cri, output, target, alpha=0.00000001):
+                    loss = cri(output, target)
+                    for svd_matrix in matrix_list:
+                        for curr_core in svd_matrix:
+                            #pdb.set_trace()
+                            assert(len(curr_core.shape) == 2)
+                            for row_idx in range(min(curr_core.shape[0], curr_core.shape[1])):
+                                if alpha * torch.sum(torch.abs(curr_core[row_idx, :]/curr_core[row_idx, row_idx])) > 10:
+                                    print("adding a huge loss!")
+                                loss = loss + alpha * torch.sum(torch.abs(curr_core[row_idx, :]/curr_core[row_idx, row_idx])) ** 2
+                    return loss
+
+                loss = my_loss(svd_matrix_list, criterion, output, target, 0.00000001)
+                #loss = criterion(output, target)
+
                 if loss > 10:
                     print('loss explosion!!')
                     #break
@@ -233,6 +200,7 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
             #print(optimizer.state_dict())
             #move_buffer_to_gpu(optimizer)
             optimizer.step()
+
             def PGD(m):
                 if t3.frobenius_norm_squared(m.module.ip1.weight) > 1:
                     for core_idx in range(5):
@@ -252,7 +220,6 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
                 if t3.frobenius_norm_squared(m.module.ip6.weight) > 1:
                     for core_idx in range(5):
                         m.module.ip6.weight.tt_cores[core_idx].data = m.module.ip6.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
-
 
             if settings.PGD:
                 PGD(model)
