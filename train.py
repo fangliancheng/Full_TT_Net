@@ -35,7 +35,7 @@ settings = edict.EasyDict({
     "WORKERS": 12,
     "BATCH_SIZE": 64,
     "PRINT_FEQ": 10,
-    "LR": 0.01,
+    "LR": 0.001,
     "EPOCHS": 45,
     "CLIP_GRAD": 0,
     "ITERATE_NUM": 6,
@@ -163,7 +163,7 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
                                 loss = loss + alpha * torch.sum(torch.abs(curr_core[row_idx, :]/curr_core[row_idx, row_idx])) ** 2
                     return loss
 
-                loss = my_loss(svd_matrix_list, criterion, output, target, 0.00000001)
+                loss = my_loss(svd_matrix_list, criterion, output, target, 0.000000004)
                 #loss = criterion(output, target)
 
                 if loss > 10:
@@ -188,38 +188,52 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
             top1.update(prec1.item(), settings.BATCH_SIZE)
             top5.update(prec5.item(), settings.BATCH_SIZE)
 
-            # # compute gradient and do SGD step
-            # optimizer.zero_grad()
-            # loss.backward()
-
             #gradient clipping
             if settings.CLIP_GRAD != 0:
                 clip_value = settings.CLIP_GRAD
                 nn.utils.clip_grad_norm(model.parameters(), clip_value)
 
             #print(optimizer.state_dict())
-            #move_buffer_to_gpu(optimizer)
             optimizer.step()
 
             def PGD(m):
+
                 if t3.frobenius_norm_squared(m.module.ip1.weight) > 1:
+                    # if t3.frobenius_norm_squared(m.module.ip1.weight) > 5:
+                    #     print("Too much information loss in ip1 projection!", t3.frobenius_norm_squared(m.module.ip1.weight))
                     for core_idx in range(5):
-                        m.module.ip1.weight.tt_cores[core_idx].data = m.module.ip1.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+                        #m.module.ip1.weight.tt_cores[core_idx].data = m.module.ip1.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+                        m.module.ip1.weight.tt_cores[core_idx].data = m.module.ip1.weight.tt_cores[core_idx].data.clamp(-1, 1)
                 if t3.frobenius_norm_squared(m.module.ip2.weight) > 1:
+                    # if t3.frobenius_norm_squared(m.module.ip2.weight) > 5:
+                    #     print("Too much information loss in ip2 projection!", t3.frobenius_norm_squared(m.module.ip2.weight))
                     for core_idx in range(5):
-                        m.module.ip2.weight.tt_cores[core_idx].data = m.module.ip2.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+                        #m.module.ip2.weight.tt_cores[core_idx].data = m.module.ip2.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+                        m.module.ip2.weight.tt_cores[core_idx].data = m.module.ip2.weight.tt_cores[core_idx].data.clamp(-1, 1)
                 if t3.frobenius_norm_squared(m.module.ip3.weight) > 1:
+                    # if t3.frobenius_norm_squared(m.module.ip3.weight) > 5:
+                    #     print("Too much information loss in ip3 projection!", t3.frobenius_norm_squared(m.module.ip3.weight))
                     for core_idx in range(5):
-                        m.module.ip3.weight.tt_cores[core_idx].data = m.module.ip3.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+                        #m.module.ip3.weight.tt_cores[core_idx].data = m.module.ip3.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+                        m.module.ip3.weight.tt_cores[core_idx].data = m.module.ip3.weight.tt_cores[core_idx].data.clamp(-1, 1)
                 if t3.frobenius_norm_squared(m.module.ip4.weight) > 1:
+                    # if t3.frobenius_norm_squared(m.module.ip4.weight) > 5:
+                    #     print("Too much information loss in ip4 projection!", t3.frobenius_norm_squared(m.module.ip4.weight))
                     for core_idx in range(5):
-                        m.module.ip4.weight.tt_cores[core_idx].data = m.module.ip4.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+                        #m.module.ip4.weight.tt_cores[core_idx].data = m.module.ip4.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+                        m.module.ip4.weight.tt_cores[core_idx].data = m.module.ip4.weight.tt_cores[core_idx].data.clamp(-1, 1)
                 if t3.frobenius_norm_squared(m.module.ip5.weight) > 1:
+                    # if t3.frobenius_norm_squared(m.module.ip5.weight) > 5:
+                    #     print("Too much information loss in ip5 projection!", t3.frobenius_norm_squared(m.module.ip5.weight))
                     for core_idx in range(5):
-                        m.module.ip5.weight.tt_cores[core_idx].data = m.module.ip5.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+                        #m.module.ip5.weight.tt_cores[core_idx].data = m.module.ip5.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+                        m.module.ip5.weight.tt_cores[core_idx].data = m.module.ip5.weight.tt_cores[core_idx].data.clamp(-1, 1)
                 if t3.frobenius_norm_squared(m.module.ip6.weight) > 1:
+                    # if t3.frobenius_norm_squared(m.module.ip6.weight) > 5:
+                    #     print("Too much information loss in ip6 projection!", t3.frobenius_norm_squared(m.module.ip6.weight))
                     for core_idx in range(5):
-                        m.module.ip6.weight.tt_cores[core_idx].data = m.module.ip6.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+                        #m.module.ip6.weight.tt_cores[core_idx].data = m.module.ip6.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+                        m.module.ip6.weight.tt_cores[core_idx].data = m.module.ip6.weight.tt_cores[core_idx].data.clamp(-1, 1)
 
             if settings.PGD:
                 PGD(model)
