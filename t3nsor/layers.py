@@ -632,7 +632,8 @@ class FTT_Solver(nn.Module):
         self.init_tt_rank = tt_rank
         self.shape = shape
         #self.weight = init.to_parameter()
-        self.parameters = None
+        self.parameter_weight = None
+        self.parameter_bias = None
         self.iter_num = iter_num
         self.L = l
         self.S = s
@@ -656,21 +657,33 @@ class FTT_Solver(nn.Module):
             #self.register_parameter('bias', None)
 
     def weight_bias_to_parameter(self, init_weight, init_bias):
-        weight_bias_list = nn.ParameterList([])
-        bias_list = []
+        weight_list = nn.ParameterList([])
+        bias_list = nn.ParameterList([])
+
         for weight_core in init_weight.tt_cores:
+            """Can only append nn.Parameter to nn.ParameterList"""
             weight_core = nn.Parameter(weight_core)
-            weight_bias_list.append(weight_core)
-        weight_tt = TensorTrain(weight_bias_list, convert_to_tensors=False)
+            weight_list.append(weight_core)
+
+        """ParameterList have only one memory, when it is changed, anything directly depend on it will be automatically updated"""
+        #for test
+        # para_data_list = [e.data for e in weight_bias_list]
+        # weight_tt_data = TensorTrain(para_data_list, convert_to_tensors=False)
+        # pdb.set_trace()
+
+        weight_tt = TensorTrain(weight_list, convert_to_tensors=False)
+        #pdb.set_trace()
+
         for bias_core in init_bias.tt_cores:
+            """Can only append nn.Parameter to nn.ParameterList"""
             bias_core = nn.Parameter(bias_core)
             #core.is_tt = True
             bias_list.append(bias_core)
-            weight_bias_list.append(bias_core)
 
         """We must add this assignment to add the parameter to model"""
-        """1.Construct nn.Parameterlist 2.Assign Parameterlist to something"""
-        self.parameters = weight_bias_list
+        """1.Construct nn.Parameterlist 2.Move weights to nn.Parameters 3.Append them to ParameterList 4.Assign Parameterlist to something"""
+        self.parameter_weight = weight_list
+        self.parameter_bias = bias_list
 
         bias_tt = TensorTrain(bias_list, convert_to_tensors=False)
         #tt_p = TensorTrain(new_bias_cores, convert_to_tensors=False)

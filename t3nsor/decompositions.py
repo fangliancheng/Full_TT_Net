@@ -197,7 +197,7 @@ def _round_tt(tt, max_tt_rank, epsilon):
             #     min_dim = torch.min(rows, columns)
             #     ranks[core_idx] = torch.min(max_tt_rank[core_idx], min_dim)
 
-        if LA.cond(curr_core.cpu().data.numpy()) > 1000:
+        if LA.cond(curr_core.cpu().data.numpy()) > 8000:
             print("svd matrix cond num exploding at round_tt! Cond num:", LA.cond(curr_core.cpu().data.numpy()))
         curr_core_list.append(curr_core)
 
@@ -378,7 +378,7 @@ def _orthogonalize_tt_cores_left_to_right(tt):
         curr_core = torch.reshape(curr_core, qr_shape)
         # curr_core, triang = torch.qr(curr_core, some=True)
 
-        if LA.cond(curr_core.cpu().data.numpy()) > 1000:
+        if LA.cond(curr_core.cpu().data.numpy()) > 8000:
             print("svd matrix cond num exploding at orthognalization! Cond num:", LA.cond(curr_core.cpu().data.numpy()))
         curr_core_list.append(curr_core)
 
