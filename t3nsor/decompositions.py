@@ -413,7 +413,8 @@ def _orthogonalize_tt_cores_left_to_right(tt):
     else:
         last_core_shape = (next_rank, raw_shape[0][-1], 1)
     tt_cores[-1] = torch.reshape(tt_cores[-1], last_core_shape)
-    return TensorTrain(tt_cores, tt.raw_shape), curr_core_list
+
+    return TensorTrain(tt_cores), curr_core_list
 
 
 def _orthogonalize_batch_tt_cores_left_to_right(tt):

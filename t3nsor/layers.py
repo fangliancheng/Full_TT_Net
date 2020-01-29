@@ -699,7 +699,7 @@ class FTT_Solver(nn.Module):
     def forward(self, x):
 
         if self.bias is None:
-            print('not implemented error')
+            raise NotImplementedError
         else:
             L = self.L
             S = self.S
@@ -712,7 +712,6 @@ class FTT_Solver(nn.Module):
 
                         output_tt = t3.scalar_tt_mul(t3.add(t3.tt_tt_matmul(t3.utils.get_element_from_batch(x, idx), self.weight), self.bias), 1/L)
                         rounded_output_tt, self.svd_matrix_round, self.svd_matrix_orth = t3.round(output_tt, self.init_tt_rank)
-                        #pdb.set_trace()
                         tt_list.append(rounded_output_tt)
                     else:
                         output_tt = t3.add(t3.scalar_tt_mul(t3.add(t3.tt_tt_matmul(t3.utils.get_element_from_batch(x, idx), self.weight), self.bias), 1/L), t3.scalar_tt_mul(t3.matrix_ones([None, self.shape[1]]), S))
