@@ -41,6 +41,7 @@ class IS_FTT_multi_layer_relu_l(nn.Module):
         #self.ip_ult_linear = nn.Linear(in_features=366, out_features=10)
         self.batch_size = settings.BATCH_SIZE
         self.tt_to_dense = t3.layers.tt_to_dense()
+        self.settings = settings
 
     def forward(self, x):
         #pdb.set_trace()
@@ -73,7 +74,6 @@ class IS_FTT_multi_layer_relu_l(nn.Module):
 
         svd_matrix_list = []
         x, m1, m2 = self.ip1(x)
-        #pdb.set_trace()
         svd_matrix_list.append(m1)
         svd_matrix_list.append(m2)
         x, m1, m2 = self.ip2(x)
@@ -100,7 +100,30 @@ class IS_FTT_multi_layer_relu_l(nn.Module):
         x = self.tt_to_dense(x)
         x = torch.squeeze(x)
         #pdb.set_trace()
-        return F.log_softmax(x, dim=1), svd_matrix_list
+
+        #print("\tIn Model: input size", x.size())
+
+        """DataParallel cannot take care of model which output nested list(they can handle list?, tuple?, tensor, dict)
+         , here we have 4*12 primary element to output, which is used to 
+         construct loss function. So we wrap the loss function within forward, and output a 2 element tuple, instead of 48+1"""
+        alpha = self.settings.ALPHA
+        loss_orth = 0
+        count = 0
+        for svd_matrix in svd_matrix_list:
+            for curr_core in svd_matrix:
+                # pdb.set_trace()
+                assert (len(curr_core.shape) == 2)
+                #for row_idx in range(min(curr_core.shape[0], curr_core.shape[1])):
+                #    count += 1
+                #    if alpha * torch.sum(torch.abs(curr_core[row_idx, :] / curr_core[row_idx, row_idx])) > 10:
+                #        print("adding a huge loss!")
+                #    loss = loss + alpha * torch.sum(torch.abs(curr_core[row_idx, :] / curr_core[row_idx, row_idx])) ** 2
+                diff = torch.norm(torch.mm(curr_core.permute(1, 0), curr_core) - torch.ones(curr_core.shape[1], curr_core.shape[1]).to('cuda'))
+                #print("distance with Identity is :", diff)
+                loss_orth += alpha * torch.norm(torch.mm(curr_core.permute(1, 0), curr_core) - torch.ones(curr_core.shape[1], curr_core.shape[1]).to('cuda'))
+                count += 1
+
+        return F.log_softmax(x, dim=1), torch.div(loss_orth, count)
 
 
 class IS_FTT_1_layer_relu(nn.Module):

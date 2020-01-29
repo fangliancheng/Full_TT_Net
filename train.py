@@ -37,7 +37,7 @@ settings = edict.EasyDict({
     "PRINT_FEQ": 10,
     "LR": 0.001,
     "EPOCHS": 45,
-    "CLIP_GRAD": 0,
+    "CLIP_GRAD": 10,
     "ITERATE_NUM": 6,
     #"TT_SHAPE": SHAPE_DICT[args.arch],
     #"TT_SHAPE": [4,8,4,8], #Shpae of Cifar 10 data is 32*32
@@ -56,6 +56,8 @@ settings = edict.EasyDict({
     "SAMPLE_MODE": 'full',
     "IS_OUTPUT_FORM": FEATURE_FORM[args.arch],
     "PGD": True,
+    #penaty of not being orthogonal
+    "ALPHA": 1e-3,
 })
 
 device = torch.device('cuda:0')
@@ -107,73 +109,65 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
 
-    def PGD(m):
+    # def PGD(m):
+    #
+    #     #if t3.frobenius_norm_squared(m.module.ip1.weight) > 1:
+    #     if True:
+    #         # if t3.frobenius_norm_squared(m.module.ip1.weight) > 5:
+    #         #     print("Too much information loss in ip1 projection!", t3.frobenius_norm_squared(m.module.ip1.weight))
+    #         for core_idx in range(5):
+    #             # m.module.ip1.weight.tt_cores[core_idx].data = m.module.ip1.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+    #             m.module.ip1.weight.tt_cores[core_idx].data = m.module.ip1.weight.tt_cores[core_idx].data.clamp(-1, 1)
+    #             m.module.ip1.bias.tt_cores[core_idx].data = m.module.ip1.bias.tt_cores[core_idx].data.clamp(-1, 1)
+    #
+    #     #if t3.frobenius_norm_squared(m.module.ip2.weight) > 1:
+    #     if True:
+    #         # if t3.frobenius_norm_squared(m.module.ip2.weight) > 5:
+    #         #     print("Too much information loss in ip2 projection!", t3.frobenius_norm_squared(m.module.ip2.weight))
+    #         for core_idx in range(5):
+    #             # m.module.ip2.weight.tt_cores[core_idx].data = m.module.ip2.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+    #             m.module.ip2.weight.tt_cores[core_idx].data = m.module.ip2.weight.tt_cores[core_idx].data.clamp(-1, 1)
+    #             m.module.ip2.bias.tt_cores[core_idx].data = m.module.ip2.bias.tt_cores[core_idx].data.clamp(-1, 1)
+    #
+    #     #if t3.frobenius_norm_squared(m.module.ip3.weight) > 1:
+    #     if True:
+    #         # if t3.frobenius_norm_squared(m.module.ip3.weight) > 5:
+    #         #     print("Too much information loss in ip3 projection!", t3.frobenius_norm_squared(m.module.ip3.weight))
+    #         for core_idx in range(5):
+    #             # m.module.ip3.weight.tt_cores[core_idx].data = m.module.ip3.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+    #             m.module.ip3.weight.tt_cores[core_idx].data = m.module.ip3.weight.tt_cores[core_idx].data.clamp(-1, 1)
+    #             m.module.ip3.bias.tt_cores[core_idx].data = m.module.ip3.bias.tt_cores[core_idx].data.clamp(-1, 1)
+    #
+    #     #if t3.frobenius_norm_squared(m.module.ip4.weight) > 1:
+    #     if True:
+    #         # if t3.frobenius_norm_squared(m.module.ip4.weight) > 5:
+    #         #     print("Too much information loss in ip4 projection!", t3.frobenius_norm_squared(m.module.ip4.weight))
+    #         for core_idx in range(5):
+    #             # m.module.ip4.weight.tt_cores[core_idx].data = m.module.ip4.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+    #             m.module.ip4.weight.tt_cores[core_idx].data = m.module.ip4.weight.tt_cores[core_idx].data.clamp(-1, 1)
+    #             m.module.ip4.bias.tt_cores[core_idx].data = m.module.ip4.bias.tt_cores[core_idx].data.clamp(-1, 1)
+    #
+    #     #if t3.frobenius_norm_squared(m.module.ip5.weight) > 1:
+    #     if True:
+    #         # if t3.frobenius_norm_squared(m.module.ip5.weight) > 5:
+    #         #     print("Too much information loss in ip5 projection!", t3.frobenius_norm_squared(m.module.ip5.weight))
+    #         for core_idx in range(5):
+    #             # m.module.ip5.weight.tt_cores[core_idx].data = m.module.ip5.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+    #             m.module.ip5.weight.tt_cores[core_idx].data = m.module.ip5.weight.tt_cores[core_idx].data.clamp(-1, 1)
+    #             m.module.ip5.bias.tt_cores[core_idx].data = m.module.ip5.bias.tt_cores[core_idx].data.clamp(-1, 1)
+    #
+    #     #if t3.frobenius_norm_squared(m.module.ip6.weight) > 1:
+    #     if True:
+    #         # if t3.frobenius_norm_squared(m.module.ip6.weight) > 5:
+    #         #     print("Too much information loss in ip6 projection!", t3.frobenius_norm_squared(m.module.ip6.weight))
+    #         for core_idx in range(5):
+    #             # m.module.ip6.weight.tt_cores[core_idx].data = m.module.ip6.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
+    #             m.module.ip6.weight.tt_cores[core_idx].data = m.module.ip6.weight.tt_cores[core_idx].data.clamp(-1, 1)
+    #             m.module.ip6.bias.tt_cores[core_idx].data = m.module.ip6.bias.tt_cores[core_idx].data.clamp(-1, 1)
 
-        #if t3.frobenius_norm_squared(m.module.ip1.weight) > 1:
-        if True:
-            # if t3.frobenius_norm_squared(m.module.ip1.weight) > 5:
-            #     print("Too much information loss in ip1 projection!", t3.frobenius_norm_squared(m.module.ip1.weight))
-            for core_idx in range(5):
-                # m.module.ip1.weight.tt_cores[core_idx].data = m.module.ip1.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
-                m.module.ip1.weight.tt_cores[core_idx].data = m.module.ip1.weight.tt_cores[core_idx].data.clamp(-1, 1)
-                m.module.ip1.bias.tt_cores[core_idx].data = m.module.ip1.bias.tt_cores[core_idx].data.clamp(-1, 1)
-
-        #if t3.frobenius_norm_squared(m.module.ip2.weight) > 1:
-        if True:
-            # if t3.frobenius_norm_squared(m.module.ip2.weight) > 5:
-            #     print("Too much information loss in ip2 projection!", t3.frobenius_norm_squared(m.module.ip2.weight))
-            for core_idx in range(5):
-                # m.module.ip2.weight.tt_cores[core_idx].data = m.module.ip2.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
-                m.module.ip2.weight.tt_cores[core_idx].data = m.module.ip2.weight.tt_cores[core_idx].data.clamp(-1, 1)
-                m.module.ip2.bias.tt_cores[core_idx].data = m.module.ip2.bias.tt_cores[core_idx].data.clamp(-1, 1)
-
-        #if t3.frobenius_norm_squared(m.module.ip3.weight) > 1:
-        if True:
-            # if t3.frobenius_norm_squared(m.module.ip3.weight) > 5:
-            #     print("Too much information loss in ip3 projection!", t3.frobenius_norm_squared(m.module.ip3.weight))
-            for core_idx in range(5):
-                # m.module.ip3.weight.tt_cores[core_idx].data = m.module.ip3.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
-                m.module.ip3.weight.tt_cores[core_idx].data = m.module.ip3.weight.tt_cores[core_idx].data.clamp(-1, 1)
-                m.module.ip3.bias.tt_cores[core_idx].data = m.module.ip3.bias.tt_cores[core_idx].data.clamp(-1, 1)
-
-        #if t3.frobenius_norm_squared(m.module.ip4.weight) > 1:
-        if True:
-            # if t3.frobenius_norm_squared(m.module.ip4.weight) > 5:
-            #     print("Too much information loss in ip4 projection!", t3.frobenius_norm_squared(m.module.ip4.weight))
-            for core_idx in range(5):
-                # m.module.ip4.weight.tt_cores[core_idx].data = m.module.ip4.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
-                m.module.ip4.weight.tt_cores[core_idx].data = m.module.ip4.weight.tt_cores[core_idx].data.clamp(-1, 1)
-                m.module.ip4.bias.tt_cores[core_idx].data = m.module.ip4.bias.tt_cores[core_idx].data.clamp(-1, 1)
-
-        #if t3.frobenius_norm_squared(m.module.ip5.weight) > 1:
-        if True:
-            # if t3.frobenius_norm_squared(m.module.ip5.weight) > 5:
-            #     print("Too much information loss in ip5 projection!", t3.frobenius_norm_squared(m.module.ip5.weight))
-            for core_idx in range(5):
-                # m.module.ip5.weight.tt_cores[core_idx].data = m.module.ip5.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
-                m.module.ip5.weight.tt_cores[core_idx].data = m.module.ip5.weight.tt_cores[core_idx].data.clamp(-1, 1)
-                m.module.ip5.bias.tt_cores[core_idx].data = m.module.ip5.bias.tt_cores[core_idx].data.clamp(-1, 1)
-
-        #if t3.frobenius_norm_squared(m.module.ip6.weight) > 1:
-        if True:
-            # if t3.frobenius_norm_squared(m.module.ip6.weight) > 5:
-            #     print("Too much information loss in ip6 projection!", t3.frobenius_norm_squared(m.module.ip6.weight))
-            for core_idx in range(5):
-                # m.module.ip6.weight.tt_cores[core_idx].data = m.module.ip6.weight.tt_cores[core_idx].data/torch.sqrt(t3.frobenius_norm_squared(m.module.ip1.weight))
-                m.module.ip6.weight.tt_cores[core_idx].data = m.module.ip6.weight.tt_cores[core_idx].data.clamp(-1, 1)
-                m.module.ip6.bias.tt_cores[core_idx].data = m.module.ip6.bias.tt_cores[core_idx].data.clamp(-1, 1)
-
-    def my_loss(matrix_list, cri, output, target, alpha=0.00000001):
-        loss = cri(output, target)
-        for svd_matrix in matrix_list:
-            for curr_core in svd_matrix:
-                # pdb.set_trace()
-                assert (len(curr_core.shape) == 2)
-                for row_idx in range(min(curr_core.shape[0], curr_core.shape[1])):
-                    if alpha * torch.sum(torch.abs(curr_core[row_idx, :] / curr_core[row_idx, row_idx])) > 10:
-                        print("adding a huge loss!")
-                    loss = loss + alpha * torch.sum(torch.abs(curr_core[row_idx, :] / curr_core[row_idx, row_idx])) ** 2
-        return loss
+    def my_loss(cond_loss, cri, output, target):
+        loss_classify = cri(output, target)
+        return loss_classify + cond_loss.sum()
 
     # #Use full dataset to compute sample covariance tensor
     # sample_covariance_tt_core_list = t3.construct_sample_covariance_tensor('full', settings)
@@ -216,10 +210,14 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
                 if settings.FEATURE_EXTRACT == 'tt':
                     output = model(input_tt)
                 else:
-                    output, svd_matrix_list = model(input)
+                    """The cond_loss will be torch.cat([loss_gpu1, loss_gpu2]), because its scalar, nn.DataParallel cat it by collumns"""
+                    output, cond_loss = model(input)
+
+                    #print("Outside: input size", input.size(),"output_size", output.size())
+
                 forward_time.update(time.time() - end_new)
 
-                loss = my_loss(svd_matrix_list, criterion, output, target, 0)
+                loss = my_loss(cond_loss, criterion, output, target)
                 #loss = criterion(output, target)
 
                 if loss > 10:
@@ -252,8 +250,8 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
             #print(optimizer.state_dict())
             optimizer.step()
 
-            if settings.PGD:
-                PGD(model)
+            #if settings.PGD:
+            #    PGD(model)
 
             # measure elapsed time
             batch_time.update(time.time() - end)
