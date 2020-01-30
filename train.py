@@ -57,7 +57,7 @@ settings = edict.EasyDict({
     "IS_OUTPUT_FORM": FEATURE_FORM[args.arch],
     "PGD": False,
     #penaty of not being orthogonal
-    "ALPHA": 1e-3,
+    "ALPHA": 1e-4,
 })
 
 device = torch.device('cuda:0')
