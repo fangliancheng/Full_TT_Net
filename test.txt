@@ -1,1 +1,5 @@
-For test 
+Push changes to remote Github repo:
+1. Save change in local file.
+2. git add [file.py]
+3. git commit -m "say something"
+4. git push tt_relu master 
