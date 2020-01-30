@@ -12,6 +12,7 @@ from t3nsor.decompositions import to_tt_tensor
 from t3nsor.decompositions import to_tt_matrix
 from t3nsor.decompositions import round
 #from t3nsor.ops import gather_rows
+from t3nsor.ops import scalar_tt_mul
 from t3nsor.ops import tt_dense_matmul
 from t3nsor.ops import tt_tt_matmul
 from t3nsor.ops import transpose
