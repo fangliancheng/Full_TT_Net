@@ -24,9 +24,9 @@ class normal_logistic(nn.Module):
 
 
 #last layer is an element wise linear layer instead of tt_to_dense procedure, intended to avoid gradient exploding
-class IS_FTT_multi_layer_relu_l(nn.Module):
+class IS_FTT_multi_layer_relu(nn.Module):
     def __init__(self, settings):
-        super(IS_FTT_multi_layer_relu_l, self).__init__()
+        super(IS_FTT_multi_layer_relu, self).__init__()
         self.ip1 = t3.FTT_Solver(in_features=177, out_features=2000,
                                      shape=[[3, 4, 8, 4, 8], [1, 2, 5, 2, 1]], tt_rank=3)
         self.ip2 = t3.FTT_Solver(in_features=2000, out_features=2000,
@@ -104,7 +104,7 @@ class IS_FTT_multi_layer_relu_l(nn.Module):
         #print("\tIn Model: input size", x.size())
 
         """DataParallel cannot take care of model which output nested list(they can handle list?, tuple?, tensor, dict)
-         , here we have 4*12 primary element to output, which is used to 
+         , here we have 4*12 primary element to output, which is used to
          construct loss function. So we wrap the loss function within forward, and output a 2 element tuple, instead of 48+1"""
         alpha = self.settings.ALPHA
         loss_orth = 0

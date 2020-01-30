@@ -39,7 +39,7 @@ MODEL_DICT = {
      'important_sketching_wideResnet': important_sketching_input_wideresnet,
      'important_sketching_ptt_net': 'important_sketching',
      'important_sketching_ftt_1hidden_relu_net': IS_FTT_1_layer_relu,
-     'important_sketching_ftt_multi_relu_l': IS_FTT_multi_layer_relu_l,
+     'important_sketching_ftt_multi_relu': IS_FTT_multi_layer_relu,
      'important_sketching_logistic': Logistic,
      'important_sketching_ftt_logistic': IS_FTT_Logistic,
      'normal_logistic_cifar': normal_logistic,
@@ -62,7 +62,7 @@ EXTRACT_DICT = {
     'important_sketching_wideResnet': 'important_sketching',
     'important_sketching_ptt_1hidden_relu_net': 'important_sketching',
     'important_sketching_ftt_1hidden_relu_net': 'important_sketching',
-    'important_sketching_ftt_multi_relu_l': 'important_sketching',
+    'important_sketching_ftt_multi_relu': 'important_sketching',
     'important_sketching_logistic': 'important_sketching',
     'important_sketching_ftt_logistic': 'important_sketching',
     'normal_logistic_cifar': 'normal_logistic',
@@ -72,7 +72,7 @@ EXTRACT_DICT = {
 FEATURE_FORM = {
     'important_sketching_wideResnet': 'dense',
     'important_sketching_ftt_1hidden_relu_net': 'tt_matrix',
-    'important_sketching_ftt_multi_relu_l': 'dense', #for DataParallel
+    'important_sketching_ftt_multi_relu': 'dense', #for DataParallel
     'important_sketching_logistic': 'dense',
     'important_sketching_ftt_logistic': 'tt_matrix',
     'normal_logistic_cifar': None,
