@@ -18,7 +18,7 @@ import math
 parser = argparse.ArgumentParser(description='PyTorch')
 parser.add_argument('--arch', default='important_sketching_ftt_1hidden_relu_net', type=str, help='arch')
 parser.add_argument('--dataset', default='CIFAR10', type=str, help='dataset')
-parser.add_argument('--mark', default='6relu_20width_01lr', type=str, help='mark')
+parser.add_argument('--mark', default='6relu_2000width_001lr', type=str, help='mark')
 #parser.add_argument('--gpu', default='1', type=int, help='GPU id to use.')
 args = parser.parse_args()
 
@@ -35,7 +35,7 @@ settings = edict.EasyDict({
     "WORKERS": 12,
     "BATCH_SIZE": 64,
     "PRINT_FEQ": 10,
-    "LR": 0.1,
+    "LR": 0.01,
     "EPOCHS": 45,
     "CLIP_GRAD": 10,
     "ITERATE_NUM": 6,
@@ -167,6 +167,7 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
 
     def my_loss(cond_loss, cri, output, target):
         loss_classify = cri(output, target)
+        print('loss_classify:', loss_classify, 'cond_loss:', cond_loss.sum())
         return loss_classify + cond_loss.sum()
 
     # #Use full dataset to compute sample covariance tensor

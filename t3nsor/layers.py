@@ -628,6 +628,7 @@ class FTT_Solver(nn.Module):
 
         if init is None:
             init = t3.glorot_initializer(shape, tt_rank=tt_rank)
+            init = t3.scalar_tt_mul(init, 1/5)
 
         self.init_tt_rank = tt_rank
         self.shape = shape
@@ -645,6 +646,7 @@ class FTT_Solver(nn.Module):
         if bias:
             #self.bias = torch.nn.Parameter(1e-2 * torch.ones(out_features))
             init_bias = t3.glorot_initializer(shape=[None, self.shape[1]])
+            init_bias = t3.scalar_tt_mul(init_bias, 1/5)
             #self.test_weight = nn.Parameter(init_bias.tt_cores[0])
             #self.bias = init_bias.to_parameter()
             #self.bias = self.bias_to_parameter(init_bias)
