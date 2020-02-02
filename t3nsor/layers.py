@@ -7,7 +7,44 @@ from t3nsor.utils import cayley
 from t3nsor import TensorTrainBatch
 from t3nsor import TensorTrain
 from t3nsor.utils import svd_fix
+import torch.nn.functional as F
 import pdb
+
+
+# #use in rounding, after othorgonalization, any rank revealing procedure can replace svd
+# class svd_like_nn(nn.Module):
+#     def __init__(self):
+#         super(svd_like_nn, self).__init__()
+#         self.fc = nn.Linear(13, 13)
+#         self.fc2 = nn.Linear(14, 13)
+#
+#     def forward(self, x):
+#         if x.shape[0] >= x.shape[1]:
+#             return
+#
+#
+# #use in orthogonalization, any procedure output A = QR where Q is orthogonal can repalce QR/SVD
+# class qr_like_nn(nn.Module):
+#     def __init__(self):
+#         super(qr_like_nn, self).__init__()
+#         self.fc = nn.Linear(13, 13)
+#         self.fc2 = nn.Linear(14, 13)
+#         self.fc_orth = nn.Linear(13, 13)
+#         self.fc_other = nn.Linear(13, 13)
+#
+#     def forward(self, x):
+#         #x.shape: [s, 13], y.shape: [13, 13]
+#         if x.shape[1] == 13:
+#             x = self.fc(x)
+#         elif x.shape[1] == 14:
+#             x = self.fc2(x)
+#         else:
+#             print('dim error!')
+#         x = F.relu(x)
+#         y = torch.mm(x.permute(1, 0), x)
+#         x_orth = self.fc_orth(x)
+#         x_other = self.fc_other(y)
+#         return x_orth, x_other
 
 
 # This is intended to be an anolog to standard FC layer
@@ -627,7 +664,7 @@ class FTT_Solver(nn.Module):
             shape = init.raw_shape
 
         if init is None:
-            init = t3.glorot_initializer(shape, tt_rank=tt_rank)
+            init = t3.glorot_initializer(shape, tt_rank=3)
             init = t3.scalar_tt_mul(init, 1/5)
 
         self.init_tt_rank = tt_rank
@@ -641,11 +678,13 @@ class FTT_Solver(nn.Module):
         self.epsilon = epsilon
         self.out_features = out_features
         self.svd_matrix_round = None
-        self.svd_matrix_orth = None
+        #self.svd_matrix_orth = None
+        #self.qr_nn = t3.qr_like_nn()
+        #self.svd_nn = t3.svd_like_nn()
 
         if bias:
             #self.bias = torch.nn.Parameter(1e-2 * torch.ones(out_features))
-            init_bias = t3.glorot_initializer(shape=[None, self.shape[1]])
+            init_bias = t3.glorot_initializer(shape=[None, self.shape[1]], tt_rank=4)
             init_bias = t3.scalar_tt_mul(init_bias, 1/5)
             #self.test_weight = nn.Parameter(init_bias.tt_cores[0])
             #self.bias = init_bias.to_parameter()
@@ -708,19 +747,22 @@ class FTT_Solver(nn.Module):
             if self.iter_num == 1:
                 f_norm = t3.frobenius_norm_squared(x)
                 batch_size = len(f_norm)
+                #pdb.set_trace()
                 tt_list = []
                 for idx in range(batch_size):
                     if f_norm[idx] > self.epsilon:
-
                         output_tt = t3.scalar_tt_mul(t3.add(t3.tt_tt_matmul(t3.utils.get_element_from_batch(x, idx), self.weight), self.bias), 1/L)
-                        rounded_output_tt, self.svd_matrix_round, self.svd_matrix_orth = t3.round(output_tt, self.init_tt_rank)
+                        #print('weight tt rank:', self.weight.ranks[4], 'bias tt rank:', self.bias.ranks[4], 'input tt rank:', x.ranks[4])
+                        #rounded_output_tt, self.svd_matrix_round, svd_net_loss = t3.round(tt=output_tt, max_tt_rank=self.init_tt_rank, qr_nn=self.qr_nn, svd_nn=self.svd_nn)
+                        rounded_output_tt = t3.round(tt=output_tt, max_tt_rank=self.init_tt_rank)
                         tt_list.append(rounded_output_tt)
                     else:
                         output_tt = t3.add(t3.scalar_tt_mul(t3.add(t3.tt_tt_matmul(t3.utils.get_element_from_batch(x, idx), self.weight), self.bias), 1/L), t3.scalar_tt_mul(t3.matrix_ones([None, self.shape[1]]), S))
-                        rounded_output_tt, self.svd_matrix_round, self.svd_matrix_orth = t3.round(output_tt, self.init_tt_rank)
+                        #rounded_output_tt, self.svd_matrix_round, svd_net_loss = t3.round(tt=output_tt, max_tt_rank=self.init_tt_rank, qr_nn=self.qr_nn, svd_nn=self.svd_nn)
+                        rounded_output_tt = t3.round(tt=output_tt, max_tt_rank=self.init_tt_rank)
                         tt_list.append(rounded_output_tt)
 
-                return t3.utils.tt_batch_from_list_of_tt(tt_list), self.svd_matrix_round, self.svd_matrix_orth
+                return t3.utils.tt_batch_from_list_of_tt(tt_list)#, self.svd_matrix_round, svd_net_loss
             else:
                 raise NotImplementedError
             # # iter_num > 1

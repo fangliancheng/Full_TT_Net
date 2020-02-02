@@ -4,6 +4,8 @@ import torch
 from t3nsor.tensor_train import TensorTrain
 from t3nsor.tensor_train import TensorTrainBatch
 from t3nsor.utils import svd_fix
+from eigen_backward import *
+
 from numpy import linalg as LA
 import pdb
 
@@ -100,7 +102,7 @@ def to_tt_matrix(mat, shape, max_tt_rank=10, epsilon=None):
 
 
 # TODO: rename round so not to shadow python.round?
-def round(tt, max_tt_rank=None, epsilon=None, name='t3f_round'):
+def round(tt, max_tt_rank=None, epsilon=None):
     """TT-rounding procedure, returns a TT object with smaller TT-ranks.
     Args:
       tt: `TensorTrain` object, TT-tensor or TT-matrix
@@ -161,14 +163,18 @@ def _round_tt(tt, max_tt_rank, epsilon):
 
     raw_shape = tt.raw_shape
 
-    tt, curr_core_list_orth = orthogonalize_tt_cores(tt)
+    #tt, curr_core_list_orth = orthogonalize_tt_cores(tt, svd_nn)
+    #tt, svd_net_loss = orthogonalize_tt_cores(tt)
+    tt = orthogonalize_tt_cores(tt)
     tt_cores = tt.tt_cores
+
     # # Copy cores references so we can change the cores.
     # tt_cores = list(tt_cores)
 
     ranks = [1] * (ndims + 1)
 
-    curr_core_list = []
+
+    #curr_core_list = []
     # Right to left SVD compression.
     for core_idx in range(ndims - 1, 0, -1):
 
@@ -199,13 +205,64 @@ def _round_tt(tt, max_tt_rank, epsilon):
 
         #if LA.cond(curr_core.cpu().data.numpy()) > 8000:
         #    print("svd matrix cond num exploding at round_tt! Cond num:", LA.cond(curr_core.cpu().data.numpy()))
-        curr_core_list.append(curr_core)
+        #curr_core_list.append(curr_core)
+        #print('curr_core shape:', curr_core.shape)
+        #uu, ss, vv = svd_nn(curr_core)
+        """We want curr_core = AB, where is bond dimension is rank(curr_core)"""
 
-        uu, ss, vv = torch.svd(curr_core, some=True)
+        #uu, ss, vv = torch.svd(curr_core, some=True)
+        # print('u shape:', uu.shape)
+        # print('s shape:', ss.shape)
+        # print('v shape:', vv.shape)
+        """
+        Method 1: Use Backward friendly alg to compute eigen-vector of AA' and A'A, call U and V, use torch.svd to compute singular values, call it S, 
+                we've got SVD of curr_core: curr_core = USV'. It seems that backward through singular value is stable.                             
+
+        Method 2: Use Backward friendly alg to compute eigen-vector of AA', call U, use torch.solve to compute V s.t curr_core = UV, note that U
+                is orthogonal since eigen-vector of normal matrix is orthogonal.
+        """
+        # Method 1:
+        eig_dict_xxt = {}
+        eig_dict_xtx = {}
+        n_eigens_u = curr_core.shape[0]
+        n_eigens_v = curr_core.shape[1]
+        xxt = curr_core.mm(curr_core.permute(1, 0))
+        xtx = curr_core.permute(1, 0).mm(curr_core)
+
+        # For symmetric pd matrix, SVD and eigen-decomp coincide, columns of v_xxt is eigen-vector of xxt, which is also left singular vector of x
+        # columns of v_xtx is eigen-vector of xtx, which is also right singular vector of x
+        with torch.no_grad():
+            _, _, v_xxt = torch.svd(xxt)
+            _, _, v_xtx = torch.svd(xtx)
+            for i in range(n_eigens_u):
+                eig_dict_xxt.update({str(i): v_xxt[:, i][..., None]})
+            for i in range(n_eigens_v):
+                eig_dict_xtx.update({str(i): v_xtx[:, i][..., None]})
+
+        power_layer = power_iteration_once.apply
+        for i in range(n_eigens_u):
+            # columns of U
+            eig_dict_xxt[str(i)] = power_layer(xxt, eig_dict_xxt[str(i)])
+        for i in range(n_eigens_v):
+            # columns of V
+            eig_dict_xtx[str(i)] = power_layer(xtx, eig_dict_xtx[str(i)])
+
+        _, ss, _ = torch.svd(curr_core)
+        U_column = []
+        V_column = []
+        for i in eig_dict_xxt.keys():
+            U_column.append(eig_dict_xxt[i])
+        for i in eig_dict_xtx.keys():
+            V_column.append(eig_dict_xtx[i])
+        uu = torch.cat(U_column, dim=1)
+        vv = torch.cat(V_column, dim=1)
+
+        #TODO: Method 2
 
         u = uu[:, 0:ranks[core_idx]]
         s = ss[0:ranks[core_idx]]
         v = vv[:, 0:ranks[core_idx]]
+
         if tt.is_tt_matrix:
             core_shape = (ranks[core_idx], curr_mode_left, curr_mode_right,
                           ranks[core_idx + 1])
@@ -223,7 +280,7 @@ def _round_tt(tt, max_tt_rank, epsilon):
         core_shape = (ranks[0], raw_shape[0][0], ranks[1])
     tt_cores[0] = torch.reshape(tt_cores[0], core_shape)
 
-    return TensorTrain(tt_cores), curr_core_list, curr_core_list_orth
+    return TensorTrain(tt_cores)#, curr_core_list, svd_net_loss
 
 
 def _round_batch_tt(tt, max_tt_rank, epsilon):
@@ -307,8 +364,7 @@ def _round_batch_tt(tt, max_tt_rank, epsilon):
     return TensorTrainBatch(tt_cores, tt.raw_shape, ranks, batch_size=tt.batch_size)
 
 
-def orthogonalize_tt_cores(tt, left_to_right=True,
-                           name='t3f_orthogonalize_tt_cores'):
+def orthogonalize_tt_cores(tt, left_to_right=True):
     """Orthogonalize TT-cores of a TT-object.
     Args:
       tt: TenosorTrain or a TensorTrainBatch.
@@ -330,6 +386,7 @@ def orthogonalize_tt_cores(tt, left_to_right=True,
             return _orthogonalize_tt_cores_right_to_left(tt)
 
 
+"""Use svd_like nn to replace svd"""
 def _orthogonalize_tt_cores_left_to_right(tt):
     """Orthogonalize TT-cores of a TT-object in the left to right order.
     Args:
@@ -358,7 +415,8 @@ def _orthogonalize_tt_cores_left_to_right(tt):
     tt_cores = list(tt.tt_cores)
 
     # store curr_core
-    curr_core_list = []
+    #curr_core_list = []
+   # print("calling once")
     for core_idx in range(ndims - 1):
 
         curr_core = tt_cores[core_idx]
@@ -373,21 +431,84 @@ def _orthogonalize_tt_cores_left_to_right(tt):
             curr_mode = curr_mode_left * curr_mode_right
         else:
             curr_mode = raw_shape[0][core_idx]
-
+        #print('next rank:', next_rank)
         qr_shape = (curr_rank * curr_mode, next_rank)
         curr_core = torch.reshape(curr_core, qr_shape)
         # curr_core, triang = torch.qr(curr_core, some=True)
 
         #if LA.cond(curr_core.cpu().data.numpy()) > 8000:
         #    print("svd matrix cond num exploding at orthognalization! Cond num:", LA.cond(curr_core.cpu().data.numpy()))
-        curr_core_list.append(curr_core)
+        #curr_core_list.append(curr_core)
 
         """pytorch does not support backprop of qr decomposition for flat matrix, now we naively use svd to approximate qr"""
         """a = qr,  a = usv^T, q = u, r = sv^T """
-        uu, ss, vv = torch.svd(curr_core, some=True)
-        curr_core = uu
-        triang = torch.mm(torch.diag(ss), vv.permute(1,0))
+        #uu, ss, vv = torch.svd(curr_core, some=True)
+        #pdb.set_trace()
+        #curr_core = uu
+        #triang = torch.mm(torch.diag(ss), vv.permute(1, 0))
+        #print('qr_shape', qr_shape)
+        #print('curr_core shape:', curr_core.shape)
+        #if curr_core.shape[1] == 13:
+        #curr_core, triang = qr_nn(curr_core)
+        """We need decompose curr_core as A*B where A is orthogonal"""
+        """
+        Method 1: Use Backward friendly alg to compute eigen-vector of AA' and A'A, call U and V, use torch.svd to compute singular values, call it S, 
+        we've got SVD of curr_core: curr_core = USV'. It seems that backward through singular value is stable.                             
+        
+        Method 2: Use Backward friendly alg to compute eigen-vector of AA', call U, use torch.solve to compute V s.t curr_core = UV, note that U
+        is orthogonal since eigen-vector of normal matrix is orthogonal.
+        """
+        #Method 1:
+        eig_dict_xxt = {}
+        eig_dict_xtx = {}
+        n_eigens_u = curr_core.shape[0]
+        n_eigens_v = curr_core.shape[1]
+        #print('curr_core shape:', curr_core.shape)
+        xxt = curr_core.mm(curr_core.permute(1, 0))
+        xtx = curr_core.permute(1, 0).mm(curr_core)
 
+        #For symmetric pd matrix, SVD and eigen-decomp coincide, columns of v_xxt is eigen-vector of xxt, which is also left singular vector of x
+        #columns of v_xtx is eigen-vector of xtx, which is also right singular vector of x
+        with torch.no_grad():
+            _, _, u_xxt = torch.svd(xxt)
+            _, _, v_xtx = torch.svd(xtx)
+            for i in range(n_eigens_u):
+                #pdb.set_trace()
+                eig_dict_xxt.update({str(i): u_xxt[:, i][..., None]})
+            for i in range(n_eigens_v):
+                eig_dict_xtx.update({str(i): v_xtx[:, i][..., None]})
+
+        power_layer = power_iteration_once.apply
+        for i in range(n_eigens_u):
+            #columns of U
+            eig_dict_xxt[str(i)] = power_layer(xxt, eig_dict_xxt[str(i)])
+        for i in range(n_eigens_v):
+            #columns of V
+            eig_dict_xtx[str(i)] = power_layer(xtx, eig_dict_xtx[str(i)])
+
+        _, s, _ = torch.svd(curr_core)
+        S = torch.diag(s)
+
+        U_column = []
+        V_column = []
+        for i in eig_dict_xxt.keys():
+            U_column.append(eig_dict_xxt[i])
+        for i in eig_dict_xtx.keys():
+            V_column.append(eig_dict_xtx[i])
+
+        #print('m1 shape:', S.shape, 'm2 shape:', torch.cat(V_column, dim=1).permute(1, 0).shape)
+        if curr_core.shape[0] <= curr_core.shape[1]:
+            curr_core = torch.cat(U_column, dim=1)
+            triang = S.mm(torch.cat(V_column, dim=1).permute(1, 0)[0:len(S), :])
+        else:
+            curr_core = torch.cat(U_column[0:len(S)], dim=1)
+            triang = S.mm(torch.cat(V_column, dim=1).permute(1, 0))
+
+        #else:
+        #    raise NotImplementedError
+
+        #orth_loss = torch.norm(torch.mm(curr_core.permute(1, 0), curr_core) - torch.ones(curr_core.shape[1], curr_core.shape[1]).to('cuda'))
+        #reconstruct_loss = torch.norm(torch.mm(curr_core, triang)-curr_core)
 
         #if triang.shape[0] != triang.shape[1]:
         #    print("R is not a square matrix!")
@@ -414,7 +535,7 @@ def _orthogonalize_tt_cores_left_to_right(tt):
         last_core_shape = (next_rank, raw_shape[0][-1], 1)
     tt_cores[-1] = torch.reshape(tt_cores[-1], last_core_shape)
 
-    return TensorTrain(tt_cores), curr_core_list
+    return TensorTrain(tt_cores) #,orth_loss+reconstruct_loss
 
 
 def _orthogonalize_batch_tt_cores_left_to_right(tt):

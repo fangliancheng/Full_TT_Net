@@ -27,12 +27,12 @@ class normal_logistic(nn.Module):
 class IS_FTT_multi_layer_relu(nn.Module):
     def __init__(self, settings):
         super(IS_FTT_multi_layer_relu, self).__init__()
-        self.ip1 = t3.FTT_Solver(shape=[[3, 4, 8, 4, 8], [1, 20, 50, 20, 1]], tt_rank=3)
-        self.ip2 = t3.FTT_Solver(shape=[[1, 20, 50, 20, 1], [1, 20, 50, 20, 1]], tt_rank=3)
-        self.ip3 = t3.FTT_Solver(shape=[[1, 20, 50, 20, 1], [1, 20, 50, 20, 1]], tt_rank=3)
-        self.ip4 = t3.FTT_Solver(shape=[[1, 20, 50, 20, 1], [1, 20, 50, 20, 1]], tt_rank=3)
-        self.ip5 = t3.FTT_Solver(shape=[[1, 20, 50, 20, 1], [1, 20, 50, 20, 1]], tt_rank=3)
-        self.ip6 = t3.FTT_Solver(shape=[[1, 20, 50, 20, 1], [1, 2, 5, 1, 1]], tt_rank=3)
+        self.ip1 = t3.FTT_Solver(shape=[[3, 4, 8, 4, 8], [4, 5, 10, 5, 4]], tt_rank=3)
+        self.ip2 = t3.FTT_Solver(shape=[[4, 5, 10, 5, 4], [4, 5, 10, 5, 4]], tt_rank=3)
+        self.ip3 = t3.FTT_Solver(shape=[[4, 5, 10, 5, 4], [4, 5, 10, 5, 4]], tt_rank=3)
+        self.ip4 = t3.FTT_Solver(shape=[[4, 5, 10, 5, 4], [4, 5, 10, 5, 4]], tt_rank=3)
+        self.ip5 = t3.FTT_Solver(shape=[[4, 5, 10, 5, 4], [4, 5, 10, 5, 4]], tt_rank=3)
+        self.ip6 = t3.FTT_Solver(shape=[[4, 5, 10, 5, 4], [1, 2, 5, 1, 1]], tt_rank=3)
         #self.ip_ult_linear = nn.Linear(in_features=366, out_features=10)
         self.batch_size = settings.BATCH_SIZE
         self.tt_to_dense = t3.layers.tt_to_dense()
@@ -43,11 +43,11 @@ class IS_FTT_multi_layer_relu(nn.Module):
         #TODO: customize nn.DataParallel to simplify code, now we are doing repeat work of conversion
         #from dense to TensorTrainBatch
 
-        x_1 = x[:, 0:9].view(-1,3,3)
-        x_2 = x[:, 9:9+36].view(-1,3,4,3)
-        x_3 = x[:, 45:72+45].view(-1,3,8,3)
-        x_4 = x[:, 117:117+36].view(-1,3,4,3)
-        x_5 = x[:, 153:153+24].view(-1,3,8)
+        x_1 = x[:, 0:9].view(-1, 3, 3)
+        x_2 = x[:, 9:9+36].view(-1, 3, 4, 3)
+        x_3 = x[:, 45:72+45].view(-1, 3, 8, 3)
+        x_4 = x[:, 117:117+36].view(-1, 3, 4, 3)
+        x_5 = x[:, 153:153+24].view(-1, 3, 8)
 
         x_1 = torch.unsqueeze(x_1, dim=1)
         x_1 = torch.unsqueeze(x_1, dim=1)
@@ -56,7 +56,6 @@ class IS_FTT_multi_layer_relu(nn.Module):
         x_4 = torch.unsqueeze(x_4, dim=2)
         x_5 = torch.unsqueeze(x_5, dim=-1)
         x_5 = torch.unsqueeze(x_5, dim=2)
-        #pdb.set_trace()
 
         cov_list = []
         cov_list.append(x_1)
@@ -66,32 +65,46 @@ class IS_FTT_multi_layer_relu(nn.Module):
         cov_list.append(x_5)
 
         x = t3.TensorTrainBatch(cov_list)
+        #pdb.set_trace()
 
+        svd_net_loss = 0
         svd_matrix_list = []
-        x, m1, m2 = self.ip1(x)
-        svd_matrix_list.append(m1)
-        svd_matrix_list.append(m2)
-        x, m1, m2 = self.ip2(x)
-        svd_matrix_list.append(m1)
-        svd_matrix_list.append(m2)
-        x, m1, m2 = self.ip3(x)
-        svd_matrix_list.append(m1)
-        svd_matrix_list.append(m2)
-        x, m1, m2 = self.ip4(x)
-        svd_matrix_list.append(m1)
-        svd_matrix_list.append(m2)
-        x, m1, m2 = self.ip5(x)
-        svd_matrix_list.append(m1)
-        svd_matrix_list.append(m2)
+        x = self.ip1(x)
+        #x, m1, m2 = self.ip1(x)
+        #svd_matrix_list.append(m1)
+        #svd_net_loss += m2
+        #svd_matrix_list.append(m2)
+        x = self.ip2(x)
+        #x, m1, m2 = self.ip2(x)
+        #svd_matrix_list.append(m1)
+        #svd_net_loss += m2
+        #svd_matrix_list.append(m2)
+        x = self.ip3(x)
+        #x, m1, m2 = self.ip3(x)
+        #svd_matrix_list.append(m1)
+        #svd_net_loss += m2
+        #svd_matrix_list.append(m2)
+        x = self.ip4(x)
+        #x, m1, m2 = self.ip4(x)
+        #svd_matrix_list.append(m1)
+        #svd_net_loss += m2
+        #svd_matrix_list.append(m2)
+        x = self.ip5(x)
+        # x, m1, m2 = self.ip5(x)
+        # svd_matrix_list.append(m1)
+        # svd_net_loss += m2
+        #svd_matrix_list.append(m2)
         """last linear layer"""
         #re = [torch.reshape(tt_core, (int(self.batch_size/torch.cuda.device_count()), -1)) for tt_core in x.tt_cores]
         #x = torch.cat(re, dim=1)
         #x = self.ip_ult_linear(x)
 
         """last tt_to_dense layer"""
-        x, m1, m2 = self.ip6(x)
-        svd_matrix_list.append(m1)
-        svd_matrix_list.append(m2)
+        x = self.ip6(x)
+        # x, m1, m2 = self.ip6(x)
+        # svd_matrix_list.append(m1)
+        # svd_net_loss += m2
+        #svd_matrix_list.append(m2)
         x = self.tt_to_dense(x)
         x = torch.squeeze(x)
         #pdb.set_trace()
@@ -102,6 +115,7 @@ class IS_FTT_multi_layer_relu(nn.Module):
          , here we have 4*12 primary element to output, which is used to
          construct loss function. So we wrap the loss function within forward, and output a 2 element tuple, instead of 48+1"""
         alpha = self.settings.ALPHA
+        beta = self.settings.BETA
         loss_orth = 0
         count = 0
         for svd_matrix in svd_matrix_list:
@@ -113,12 +127,12 @@ class IS_FTT_multi_layer_relu(nn.Module):
                 #    if alpha * torch.sum(torch.abs(curr_core[row_idx, :] / curr_core[row_idx, row_idx])) > 10:
                 #        print("adding a huge loss!")
                 #    loss = loss + alpha * torch.sum(torch.abs(curr_core[row_idx, :] / curr_core[row_idx, row_idx])) ** 2
-                diff = torch.norm(torch.mm(curr_core.permute(1, 0), curr_core) - torch.ones(curr_core.shape[1], curr_core.shape[1]).to('cuda'))
+                #diff = torch.norm(torch.mm(curr_core.permute(1, 0), curr_core) - torch.ones(curr_core.shape[1], curr_core.shape[1]).to('cuda'))
                 #print("distance with Identity is :", diff)
                 loss_orth += alpha * torch.norm(torch.mm(curr_core.permute(1, 0), curr_core) - torch.ones(curr_core.shape[1], curr_core.shape[1]).to('cuda'))
                 count += 1
 
-        return F.log_softmax(x, dim=1), torch.div(loss_orth, count)
+        return F.log_softmax(x, dim=1), torch.div(loss_orth, count), beta*svd_net_loss
 
 
 class IS_FTT_1_layer_relu(nn.Module):
