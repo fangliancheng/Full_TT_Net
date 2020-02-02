@@ -33,6 +33,8 @@ from t3nsor.layers import TTLinear
 from t3nsor.layers import TTSolver
 from t3nsor.layers import FTT_Solver
 from t3nsor.layers import TTFC
+#from t3nsor.layers import qr_like_nn
+#from t3nsor.layers import svd_like_nn
 #from t3nsor.layers import layer_to_tt_tensor
 #from t3nsor.layers import layer_to_tt_matrix
 from t3nsor.layers import core_wise_linear
