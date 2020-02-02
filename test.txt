@@ -12,5 +12,6 @@ Backward: Analytical formula of Power Iteration with ground-truth initialization
 proven to be accurate in limit and is bounded above.
 
 For symmetric positive definite matrix, SVD and Eigen-decomp coincide.
-For symmetric matrix, SVD and Eigen-decomp coincide up to sign(+-1)
+For symmetric matrix, singular vector/values and Eigen-vector/value coincide up to sign(+-1)
+Ref: https://math.stackexchange.com/questions/546112/recovering-eigenvectors-from-svd
 

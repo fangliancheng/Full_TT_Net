@@ -486,4 +486,9 @@ def get_element_from_batch(tt_batch, idx):
     else:
         for core_idx in range(tt_batch.ndims):
             tt_cores.append(tt_batch.tt_cores[core_idx][idx, :, :, :])
+    #print('get_element rank:', TensorTrain(tt_cores).ranks)
+    # if TensorTrain(tt_cores).ranks[4] == 1:
+    #     print('idx unnormal:', idx)
+    # else:
+    #     print('idx normal:', idx)
     return TensorTrain(tt_cores)
