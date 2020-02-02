@@ -218,50 +218,86 @@ def _round_tt(tt, max_tt_rank, epsilon):
         Method 1: Use Backward friendly alg to compute eigen-vector of AA' and A'A, call U and V, use torch.svd to compute singular values, call it S, 
                 we've got SVD of curr_core: curr_core = USV'. It seems that backward through singular value is stable.                             
 
-        Method 2: Use Backward friendly alg to compute eigen-vector of AA', call U, use torch.solve to compute V s.t curr_core = UV, note that U
+        Method 2: Use Backward friendly alg to compute eigen-vector of A'A, use them to make up columns of V, use torch.solve to compute U s.t curr_core = UV', note that V
                 is orthogonal since eigen-vector of normal matrix is orthogonal.
         """
         # Method 1:
-        eig_dict_xxt = {}
+        # eig_dict_xxt = {}
+        # eig_dict_xtx = {}
+        # n_eigens_u = curr_core.shape[0]
+        # n_eigens_v = curr_core.shape[1]
+        # xxt = curr_core.mm(curr_core.permute(1, 0))
+        # xtx = curr_core.permute(1, 0).mm(curr_core)
+        #
+        # # For symmetric pd matrix, SVD and eigen-decomp coincide, columns of u_xxt is eigen-vector of xxt, which is also left singular vector of x
+        # # columns of v_xtx is eigen-vector of xtx, which is also right singular vector of x
+        # with torch.no_grad():
+        #     _, _, u_xxt = torch.svd(xxt)
+        #     _, _, v_xtx = torch.svd(xtx)
+        #     for i in range(n_eigens_u):
+        #         eig_dict_xxt.update({str(i): u_xxt[:, i][..., None]})
+        #     for i in range(n_eigens_v):
+        #         eig_dict_xtx.update({str(i): v_xtx[:, i][..., None]})
+        #
+        # power_layer = power_iteration_once.apply
+        # for i in range(n_eigens_u):
+        #     # columns of U
+        #     eig_dict_xxt[str(i)] = power_layer(xxt, eig_dict_xxt[str(i)])
+        # for i in range(n_eigens_v):
+        #     # columns of V
+        #     eig_dict_xtx[str(i)] = power_layer(xtx, eig_dict_xtx[str(i)])
+        #
+        # _, ss, _ = torch.svd(curr_core)
+        # U_column = []
+        # V_column = []
+        # for i in eig_dict_xxt.keys():
+        #     U_column.append(eig_dict_xxt[i])
+        # for i in eig_dict_xtx.keys():
+        #     V_column.append(eig_dict_xtx[i])
+        # uu = torch.cat(U_column, dim=1)
+        # vv = torch.cat(V_column, dim=1)
+        #
+        # u = uu[:, 0:ranks[core_idx]]
+        # s = ss[0:ranks[core_idx]]
+        # v = vv[:, 0:ranks[core_idx]]
+        #
+        # if tt.is_tt_matrix:
+        #     core_shape = (ranks[core_idx], curr_mode_left, curr_mode_right,
+        #                   ranks[core_idx + 1])
+        # else:
+        #     core_shape = (ranks[core_idx], curr_mode, ranks[core_idx + 1])
+        # tt_cores[core_idx] = torch.reshape(torch.transpose(v, 0, 1), core_shape)
+        # prev_core_shape = (-1, rows)
+        # tt_cores[core_idx - 1] = torch.reshape(tt_cores[core_idx - 1], prev_core_shape)
+        # tt_cores[core_idx - 1] = torch.matmul(tt_cores[core_idx - 1], u)
+        # tt_cores[core_idx - 1] = torch.matmul(tt_cores[core_idx - 1], torch.diag(s))
+
+        #Method 2
         eig_dict_xtx = {}
-        n_eigens_u = curr_core.shape[0]
         n_eigens_v = curr_core.shape[1]
-        xxt = curr_core.mm(curr_core.permute(1, 0))
         xtx = curr_core.permute(1, 0).mm(curr_core)
 
-        # For symmetric pd matrix, SVD and eigen-decomp coincide, columns of v_xxt is eigen-vector of xxt, which is also left singular vector of x
+        # For symmetric pd matrix, SVD and eigen-decomp coincide, columns of u_xxt is eigen-vector of xxt, which is also left singular vector of x
         # columns of v_xtx is eigen-vector of xtx, which is also right singular vector of x
         with torch.no_grad():
-            _, _, v_xxt = torch.svd(xxt)
             _, _, v_xtx = torch.svd(xtx)
-            for i in range(n_eigens_u):
-                eig_dict_xxt.update({str(i): v_xxt[:, i][..., None]})
             for i in range(n_eigens_v):
                 eig_dict_xtx.update({str(i): v_xtx[:, i][..., None]})
 
         power_layer = power_iteration_once.apply
-        for i in range(n_eigens_u):
-            # columns of U
-            eig_dict_xxt[str(i)] = power_layer(xxt, eig_dict_xxt[str(i)])
         for i in range(n_eigens_v):
             # columns of V
             eig_dict_xtx[str(i)] = power_layer(xtx, eig_dict_xtx[str(i)])
-
-        _, ss, _ = torch.svd(curr_core)
-        U_column = []
         V_column = []
-        for i in eig_dict_xxt.keys():
-            U_column.append(eig_dict_xxt[i])
         for i in eig_dict_xtx.keys():
             V_column.append(eig_dict_xtx[i])
-        uu = torch.cat(U_column, dim=1)
-        vv = torch.cat(V_column, dim=1)
+        V = torch.cat(V_column, dim=1)
+        #we solve U s.t UV' = curr_core, take transpose, VU' = curr_core'
+        U_t, _ = torch.solve(curr_core.permute(1, 0), V)
+        U = U_t.t()
 
-        #TODO: Method 2
-
-        u = uu[:, 0:ranks[core_idx]]
-        s = ss[0:ranks[core_idx]]
-        v = vv[:, 0:ranks[core_idx]]
+        u = U[:, 0:ranks[core_idx]]
+        v = V[:, 0:ranks[core_idx]]
 
         if tt.is_tt_matrix:
             core_shape = (ranks[core_idx], curr_mode_left, curr_mode_right,
@@ -272,7 +308,6 @@ def _round_tt(tt, max_tt_rank, epsilon):
         prev_core_shape = (-1, rows)
         tt_cores[core_idx - 1] = torch.reshape(tt_cores[core_idx - 1], prev_core_shape)
         tt_cores[core_idx - 1] = torch.matmul(tt_cores[core_idx - 1], u)
-        tt_cores[core_idx - 1] = torch.matmul(tt_cores[core_idx - 1], torch.diag(s))
 
     if tt.is_tt_matrix:
         core_shape = (ranks[0], raw_shape[0][0], raw_shape[1][0], ranks[1])
@@ -459,66 +494,82 @@ def _orthogonalize_tt_cores_left_to_right(tt):
         is orthogonal since eigen-vector of normal matrix is orthogonal.
         """
         #Method 1:
-        eig_dict_xxt = {}
-        eig_dict_xtx = {}
-        n_eigens_u = curr_core.shape[0]
-        n_eigens_v = curr_core.shape[1]
-        #print('curr_core shape:', curr_core.shape)
-        xxt = curr_core.mm(curr_core.permute(1, 0))
-        xtx = curr_core.permute(1, 0).mm(curr_core)
+        # eig_dict_xxt = {}
+        # eig_dict_xtx = {}
+        # n_eigens_u = curr_core.shape[0]
+        # n_eigens_v = curr_core.shape[1]
+        # #print('curr_core shape:', curr_core.shape)
+        # xxt = curr_core.mm(curr_core.permute(1, 0))
+        # xtx = curr_core.permute(1, 0).mm(curr_core)
+        #
+        # #For symmetric pd matrix, SVD and eigen-decomp coincide, columns of v_xxt is eigen-vector of xxt, which is also left singular vector of x
+        # #columns of v_xtx is eigen-vector of xtx, which is also right singular vector of x
+        # with torch.no_grad():
+        #     _, _, u_xxt = torch.svd(xxt)
+        #     _, _, v_xtx = torch.svd(xtx)
+        #     for i in range(n_eigens_u):
+        #         #pdb.set_trace()
+        #         eig_dict_xxt.update({str(i): u_xxt[:, i][..., None]})
+        #     for i in range(n_eigens_v):
+        #         eig_dict_xtx.update({str(i): v_xtx[:, i][..., None]})
+        #
+        # power_layer = power_iteration_once.apply
+        # for i in range(n_eigens_u):
+        #     #columns of U
+        #     eig_dict_xxt[str(i)] = power_layer(xxt, eig_dict_xxt[str(i)])
+        # for i in range(n_eigens_v):
+        #     #columns of V
+        #     eig_dict_xtx[str(i)] = power_layer(xtx, eig_dict_xtx[str(i)])
+        #
+        # _, s, _ = torch.svd(curr_core)
+        # S = torch.diag(s)
+        #
+        # U_column = []
+        # V_column = []
+        # for i in eig_dict_xxt.keys():
+        #     U_column.append(eig_dict_xxt[i])
+        # for i in eig_dict_xtx.keys():
+        #     V_column.append(eig_dict_xtx[i])
+        #
+        # #print('m1 shape:', S.shape, 'm2 shape:', torch.cat(V_column, dim=1).permute(1, 0).shape)
+        # if curr_core.shape[0] <= curr_core.shape[1]:
+        #     curr_core = torch.cat(U_column, dim=1)
+        #     triang = S.mm(torch.cat(V_column, dim=1).permute(1, 0)[0:len(S), :])
+        # else:
+        #     curr_core = torch.cat(U_column[0:len(S)], dim=1)
+        #     triang = S.mm(torch.cat(V_column, dim=1).permute(1, 0))
 
-        #For symmetric pd matrix, SVD and eigen-decomp coincide, columns of v_xxt is eigen-vector of xxt, which is also left singular vector of x
-        #columns of v_xtx is eigen-vector of xtx, which is also right singular vector of x
+        #Method 2
+        eig_dict_xxt = {}
+        n_eigens_u = curr_core.shape[0]
+        xxt = curr_core.mm(curr_core.permute(1, 0))
+
+        # For symmetric pd matrix, SVD and eigen-decomp coincide, columns of u_xxt is eigen-vector of xxt, which is also left singular vector of x
+        # columns of v_xtx is eigen-vector of xtx, which is also right singular vector of x
         with torch.no_grad():
             _, _, u_xxt = torch.svd(xxt)
-            _, _, v_xtx = torch.svd(xtx)
             for i in range(n_eigens_u):
-                #pdb.set_trace()
                 eig_dict_xxt.update({str(i): u_xxt[:, i][..., None]})
-            for i in range(n_eigens_v):
-                eig_dict_xtx.update({str(i): v_xtx[:, i][..., None]})
 
         power_layer = power_iteration_once.apply
         for i in range(n_eigens_u):
-            #columns of U
+            # columns of V
             eig_dict_xxt[str(i)] = power_layer(xxt, eig_dict_xxt[str(i)])
-        for i in range(n_eigens_v):
-            #columns of V
-            eig_dict_xtx[str(i)] = power_layer(xtx, eig_dict_xtx[str(i)])
-
-        _, s, _ = torch.svd(curr_core)
-        S = torch.diag(s)
-
         U_column = []
-        V_column = []
         for i in eig_dict_xxt.keys():
             U_column.append(eig_dict_xxt[i])
-        for i in eig_dict_xtx.keys():
-            V_column.append(eig_dict_xtx[i])
-
-        #print('m1 shape:', S.shape, 'm2 shape:', torch.cat(V_column, dim=1).permute(1, 0).shape)
-        if curr_core.shape[0] <= curr_core.shape[1]:
-            curr_core = torch.cat(U_column, dim=1)
-            triang = S.mm(torch.cat(V_column, dim=1).permute(1, 0)[0:len(S), :])
-        else:
-            curr_core = torch.cat(U_column[0:len(S)], dim=1)
-            triang = S.mm(torch.cat(V_column, dim=1).permute(1, 0))
-
-        #else:
-        #    raise NotImplementedError
+        U = torch.cat(U_column, dim=1)
+        #we solve U s.t UV' = curr_core, take transpose, VU' = curr_core'
+        V, _ = torch.solve(curr_core, U)
+        curr_core = U
+        triang = V
 
         #orth_loss = torch.norm(torch.mm(curr_core.permute(1, 0), curr_core) - torch.ones(curr_core.shape[1], curr_core.shape[1]).to('cuda'))
         #reconstruct_loss = torch.norm(torch.mm(curr_core, triang)-curr_core)
 
-        #if triang.shape[0] != triang.shape[1]:
-        #    print("R is not a square matrix!")
-        #if triang.get_shape().is_fully_defined():
+
         triang_shape = list(triang.shape)
-        #else:
-        #    triang_shape = tf.shape(triang)
-        # The TT-rank could have changed: if qr_shape is e.g. 4 x 10, than q would
-        # be of size 4 x 4 and r would be 4 x 10, which means that the next rank
-        # should be changed to 4.
+
         next_rank = triang_shape[0]
         if tt.is_tt_matrix:
             new_core_shape = (curr_rank, curr_mode_left, curr_mode_right, next_rank)
