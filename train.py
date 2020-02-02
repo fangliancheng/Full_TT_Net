@@ -58,6 +58,7 @@ settings = edict.EasyDict({
     "PGD": False,
     #penaty of not being orthogonal
     "ALPHA": 1e-4,
+    "BETA": 1e-4,
 })
 
 device = torch.device('cuda:0')
@@ -165,9 +166,9 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
     #             m.module.ip6.weight.tt_cores[core_idx].data = m.module.ip6.weight.tt_cores[core_idx].data.clamp(-1, 1)
     #             m.module.ip6.bias.tt_cores[core_idx].data = m.module.ip6.bias.tt_cores[core_idx].data.clamp(-1, 1)
 
-    def my_loss(cond_loss, cri, output, target):
+    def my_loss(other_loss, cri, output, target):
         loss_classify = cri(output, target)
-        print('loss_classify:', loss_classify, 'cond_loss:', cond_loss.sum())
+        print('loss_classify:', loss_classify, 'cond_loss:', other_loss.sum())
         return loss_classify + cond_loss.sum()
 
     # #Use full dataset to compute sample covariance tensor
@@ -212,14 +213,15 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
                     output = model(input_tt)
                 else:
                     """The cond_loss will be torch.cat([loss_gpu1, loss_gpu2]), because its scalar, nn.DataParallel cat it by collumns"""
-                    output, cond_loss = model(input)
+                    #output, cond_loss, svd_net_loss = model(input)
+                    output = model(input)
 
                     #print("Outside: input size", input.size(),"output_size", output.size())
 
                 forward_time.update(time.time() - end_new)
 
-                loss = my_loss(cond_loss, criterion, output, target)
-                #loss = criterion(output, target)
+                #loss = my_loss(cond_loss+svd_net_loss, criterion, output, target)
+                loss = criterion(output, target)
 
                 if loss > 10:
                     print('loss explosion!!')
