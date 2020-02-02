@@ -3,3 +3,10 @@ Push changes to remote Github repo:
 2. git add [file.py]
 3. git commit -m "say something"
 4. git push tt_relu master 
+
+Note on Backward paper:
+Alg: Input: M, initialization of eig-vector
+Output: eig-vector of M
+
+Backward: Analytical formula of Power Iteration with ground-truth initialization,
+proven to be accurate in limit and is bounded above.
