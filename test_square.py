@@ -16,16 +16,18 @@ N, D_in, H, D_out = 4,4,4,4
 x = torch.randn(N, D_in, device=device, dtype=dtype)
 #construct orthogonal matrix
 q,r = torch.qr(x)
-x = torch.diag(torch.Tensor([1,10,20,30])).to(device)
+x = torch.diag(torch.Tensor([0.75,1,2,3])).to(device)
 print("x:", x)
 
 y = torch.randn(N, D_out, device=device, dtype=dtype)
 
 # Create random Tensors for weights.
 #w1 = torch.randn(D_in, H, device=device, dtype=dtype, requires_grad=True)
-w1 = q.clone().detach().requires_grad_(True).to(device)
+w1 = torch.eye(4, dtype=dtype, device=device, requires_grad=True)
+#w1 = q.clone().detach().requires_grad_(True).to(device)
+#w1 = diag_weight.clone().detach().requires_grad_(True).to(device)
+print('w1:', w1)
 w2 = torch.randn(H, D_out, device=device, dtype=dtype, requires_grad=True)
-print(w1)
 
 # #Method 2
 #         eig_dict_xtx = {}
@@ -68,6 +70,7 @@ for t in range(500):
     assert(ip1.shape[0] == ip1.shape[1])
     """ip1 = w1*x*w1^T, ip1^T*ip1 = w1*x*w1^T*w1*x*w1^T = w1*x*x*w1^T, so xtx will have eigenvalue/singular value [1,100,400,900], so is PD"""
     xtx = ip1.t().mm(ip1)
+    print('xtx:', xtx)
     #pdb.set_trace()
 
     with torch.no_grad():
@@ -87,11 +90,11 @@ for t in range(500):
         V_column.append(eig_dict_xtx[i])
     V = torch.cat(V_column, dim=1)
 
-    U_t, _ = torch.solve(ip1.permute(1, 0), V)
-    print('torch.solve completed!')
-    U = U_t.t()
+    #U_t, _ = torch.solve(ip1.permute(1, 0), V)
+    #print('torch.solve completed!')
+    #U = U_t.t()
 
-    y_pred = U.mm(w2)
+    y_pred = V.mm(w2)
 
     # Compute and print loss
     loss = (y_pred - y).pow(2).sum()
@@ -105,6 +108,7 @@ for t in range(500):
     # Update weights using gradient descent
     print("begin update!")
     with torch.no_grad():
+        print('w1,2 grad:', w1.grad, w2.grad)
         w1 -= learning_rate * w1.grad
         w2 -= learning_rate * w2.grad
 
