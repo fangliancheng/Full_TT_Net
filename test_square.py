@@ -3,20 +3,27 @@ import torch
 from t3nsor.utils import svd_fix
 from eigen_backward import *
 import pdb
+from numpy import linalg as LA
 
 dtype = torch.float
 device = torch.device("cuda")
 
 # N is batch size; D_in is input dimension;
 # H is hidden dimension; D_out is output dimension.
-N, D_in, H, D_out = 100, 100, 100, 100
+N, D_in, H, D_out = 4,4,4,4
 
 # Create random Tensors to hold input and outputs.
 x = torch.randn(N, D_in, device=device, dtype=dtype)
+#construct orthogonal matrix
+q,r = torch.qr(x)
+x = torch.diag(torch.Tensor([1,10,20,30])).to(device)
+print("x:", x)
+
 y = torch.randn(N, D_out, device=device, dtype=dtype)
 
 # Create random Tensors for weights.
-w1 = torch.randn(D_in, H, device=device, dtype=dtype, requires_grad=True)
+#w1 = torch.randn(D_in, H, device=device, dtype=dtype, requires_grad=True)
+w1 = q.clone().detach().requires_grad_(True).to(device)
 w2 = torch.randn(H, D_out, device=device, dtype=dtype, requires_grad=True)
 print(w1)
 
@@ -51,20 +58,22 @@ print(w1)
 learning_rate = 1e-6
 for t in range(500):
 
-    # Forward pass: compute predicted y using operations;
-    ip1 = x.mm(w1).contiguous().view(100, -1)
+    #ip1 have eigen value 1 10 50 100
+    ip1 = (w1.mm(x)).mm(w1.t()).contiguous().view(4, -1)
     eig_dict_xtx = {}
     n_eigens_v = ip1.shape[1]
     print("ip1 shape:", ip1.shape)
 
     #make sure its square matrix
     assert(ip1.shape[0] == ip1.shape[1])
+    """ip1 = w1*x*w1^T, ip1^T*ip1 = w1*x*w1^T*w1*x*w1^T = w1*x*x*w1^T, so xtx will have eigenvalue/singular value [1,100,400,900], so is PD"""
     xtx = ip1.t().mm(ip1)
     #pdb.set_trace()
 
     with torch.no_grad():
         #pdb.set_trace()
         print("begin svd")
+        print("cond number for input of svd:", LA.cond(xtx.cpu().data.numpy()))
         _, _, v_xtx = torch.svd(xtx)
         for i in range(n_eigens_v):
             eig_dict_xtx.update({str(i): v_xtx[:, i][..., None]})
@@ -77,7 +86,7 @@ for t in range(500):
     for i in eig_dict_xtx.keys():
         V_column.append(eig_dict_xtx[i])
     V = torch.cat(V_column, dim=1)
-    # we solve U s.t UV' = curr_core, take transpose, VU' = curr_core'
+
     U_t, _ = torch.solve(ip1.permute(1, 0), V)
     print('torch.solve completed!')
     U = U_t.t()
