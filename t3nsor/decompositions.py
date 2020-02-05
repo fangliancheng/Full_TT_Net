@@ -215,8 +215,8 @@ def _round_tt(tt, max_tt_rank, epsilon):
         # print('s shape:', ss.shape)
         # print('v shape:', vv.shape)
         """
-        Method 1: Use Backward friendly alg to compute eigen-vector of AA' and A'A, call U and V, use torch.svd to compute singular values, call it S, 
-                we've got SVD of curr_core: curr_core = USV'. It seems that backward through singular value is stable.                             
+        Method 1: Use Backward friendly alg to compute eigen-vector of AA' and A'A, call U and V, use torch.svd to compute singular values, call it S,
+                we've got SVD of curr_core: curr_core = USV'. It seems that backward through singular value is stable.
 
         Method 2: Use Backward friendly alg to compute eigen-vector of A'A, use them to make up columns of V, use torch.solve to compute U s.t curr_core = UV', note that V
                 is orthogonal since eigen-vector of normal matrix is orthogonal.
@@ -275,7 +275,10 @@ def _round_tt(tt, max_tt_rank, epsilon):
         #Method 2
         eig_dict_xtx = {}
         n_eigens_v = curr_core.shape[1]
-        xtx = curr_core.permute(1, 0).mm(curr_core)
+        print('curr_core shape:', curr_core.shape)
+        xtx = curr_core.t().mm(curr_core)
+        ei_value, _ = torch.eig(xtx)
+        #print('eigen-value:', ei_value)
 
         # For symmetric pd matrix, SVD and eigen-decomp coincide, columns of u_xxt is eigen-vector of xxt, which is also left singular vector of x
         # columns of v_xtx is eigen-vector of xtx, which is also right singular vector of x
@@ -308,6 +311,7 @@ def _round_tt(tt, max_tt_rank, epsilon):
         prev_core_shape = (-1, rows)
         tt_cores[core_idx - 1] = torch.reshape(tt_cores[core_idx - 1], prev_core_shape)
         tt_cores[core_idx - 1] = torch.matmul(tt_cores[core_idx - 1], u)
+
 
     if tt.is_tt_matrix:
         core_shape = (ranks[0], raw_shape[0][0], raw_shape[1][0], ranks[1])
@@ -487,9 +491,9 @@ def _orthogonalize_tt_cores_left_to_right(tt):
         #curr_core, triang = qr_nn(curr_core)
         """We need decompose curr_core as A*B where A is orthogonal"""
         """
-        Method 1: Use Backward friendly alg to compute eigen-vector of AA' and A'A, call U and V, use torch.svd to compute singular values, call it S, 
-        we've got SVD of curr_core: curr_core = USV'. It seems that backward through singular value is stable.                             
-        
+        Method 1: Use Backward friendly alg to compute eigen-vector of AA' and A'A, call U and V, use torch.svd to compute singular values, call it S,
+        we've got SVD of curr_core: curr_core = USV'. It seems that backward through singular value is stable.
+
         Method 2: Use Backward friendly alg to compute eigen-vector of AA', call U, use torch.solve to compute V s.t curr_core = UV, note that U
         is orthogonal since eigen-vector of normal matrix is orthogonal.
         """
@@ -559,8 +563,9 @@ def _orthogonalize_tt_cores_left_to_right(tt):
         for i in eig_dict_xxt.keys():
             U_column.append(eig_dict_xxt[i])
         U = torch.cat(U_column, dim=1)
-        #we solve U s.t UV' = curr_core, take transpose, VU' = curr_core'
+        #we solve v s.t UV = curr_core
         V, _ = torch.solve(curr_core, U)
+        #print('V', V)
         curr_core = U
         triang = V
 
