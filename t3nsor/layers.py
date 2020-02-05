@@ -751,12 +751,14 @@ class FTT_Solver(nn.Module):
                 tt_list = []
                 for idx in range(batch_size):
                     if f_norm[idx] > self.epsilon:
+                        print('not activated!')
                         output_tt = t3.scalar_tt_mul(t3.add(t3.tt_tt_matmul(t3.utils.get_element_from_batch(x, idx), self.weight), self.bias), 1/L)
                         #print('weight tt rank:', self.weight.ranks[4], 'bias tt rank:', self.bias.ranks[4], 'input tt rank:', x.ranks[4])
                         #rounded_output_tt, self.svd_matrix_round, svd_net_loss = t3.round(tt=output_tt, max_tt_rank=self.init_tt_rank, qr_nn=self.qr_nn, svd_nn=self.svd_nn)
                         rounded_output_tt = t3.round(tt=output_tt, max_tt_rank=self.init_tt_rank)
                         tt_list.append(rounded_output_tt)
                     else:
+                        print('activated!')
                         output_tt = t3.add(t3.scalar_tt_mul(t3.add(t3.tt_tt_matmul(t3.utils.get_element_from_batch(x, idx), self.weight), self.bias), 1/L), t3.scalar_tt_mul(t3.matrix_ones([None, self.shape[1]]), S))
                         #rounded_output_tt, self.svd_matrix_round, svd_net_loss = t3.round(tt=output_tt, max_tt_rank=self.init_tt_rank, qr_nn=self.qr_nn, svd_nn=self.svd_nn)
                         rounded_output_tt = t3.round(tt=output_tt, max_tt_rank=self.init_tt_rank)
