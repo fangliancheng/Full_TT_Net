@@ -83,21 +83,17 @@ def train(model, train_loader, dir=None, sample_covariance_tt_core_list=None, pr
         data_time = AverageMeter()
         end = time.time()
 
-        # if epoch == 2:
-        #     p()
         for i, (input, target) in enumerate(train_loader):
-
-            # if i > 21:
-            #     break
-            # input = torch.FloatTensor(input)
             data_time.update(time.time() - end)
 
             target = target.to(device=device)
             input = input.to(device=device)
-            input = pre_model(input)
-            reduced_cov = t3.important_sketching(input, sample_covariance_tt_core_list, settings)
-            # Then use target, reduced_cov as response and new dimension-reduced feature to do supervised learning
-            input = reduced_cov
+            if pre_model is not None:
+                #print('input shape:', input.shape)
+                input = pre_model(input)
+                reduced_cov = t3.important_sketching(input, sample_covariance_tt_core_list, settings)
+                # Then use target, reduced_cov as response and new dimension-reduced feature to do supervised learning
+                input = reduced_cov
 
             # compute output
             output = model(input)
@@ -161,9 +157,10 @@ def val(model, val_loader, epoch, sample_covariance_tt_core_list=None, pre_model
     for i, (input, target) in enumerate(val_loader):
         target = target.to(device=device)
         input = input.to(device=device)
-        input = pre_model(input)
-        reduced_cov = t3.important_sketching(input, sample_covariance_tt_core_list, settings)
-        input = reduced_cov
+        if pre_model is not None:
+            input = pre_model(input)
+            reduced_cov = t3.important_sketching(input, sample_covariance_tt_core_list, settings)
+            input = reduced_cov
         with torch.no_grad():
             input_var = torch.autograd.Variable(input)
             target_var = torch.autograd.Variable(target)
@@ -195,37 +192,38 @@ def val(model, val_loader, epoch, sample_covariance_tt_core_list=None, pre_model
 def main():
     val_loader = cifar_loader(settings, 'val')
     train_loader = cifar_loader(settings, 'train', shuffle=True, data_augment=True)
-
+    #
     # pre_processing_model = LeNet()
     # print('pre_processing model:', pre_processing_model)
     # if settings.GPU:
     #     pre_processing_model = nn.DataParallel(pre_processing_model).cuda()
     #
     # #set location to save pre_processing model weights
-    # settings.OUTPUT_FOLDER = "result/pytorch_{}_{}_{}".format('LeNet', args.mark, args.dataset)
+    # settings.OUTPUT_FOLDER = "result/pytorch_{}_{}_{}".format('LeNet', 'channel_15', args.dataset)
     # snapshot_dir = dir(os.path.join(settings.OUTPUT_FOLDER, 'snapshot'))
     # train(pre_processing_model, train_loader, snapshot_dir)
     #
     # #observe the performance of this weak network
     # #Note: 67.288 top1 test accuracy, 94.922 top5
     # for epoch in range(settings.EPOCHS - 10, settings.EPOCHS):
-    #     settings.MODEL_FILE = "result/pytorch_{}_{}_{}/snapshot/epoch_{}.pth".format('LeNet', args.mark, args.dataset, epoch)
+    #     settings.MODEL_FILE = "result/pytorch_{}_{}_{}/snapshot/epoch_{}.pth".format('LeNet', 'channel_15, args.dataset, epoch)
     #     val(pre_processing_model, val_loader, epoch)
-    #
-    lenet_model_file = "result/pytorch_{}_{}_{}/snapshot/epoch_{}.pth".format('LeNet', args.mark, args.dataset, 29)
+
+    ###########################################################################################################################
+    lenet_model_file = "result/pytorch_{}_{}_{}/snapshot/epoch_{}.pth".format('LeNet', 'channel_15', args.dataset, 29)
     check_point = torch.load(lenet_model_file)
     state_dict = check_point['state_dict']
-    for name in state_dict:
-        print(name)
+    #for name in state_dict:
+    #    print(name)
     pre_processing_model = nn.DataParallel(LeNet_partial()).cuda()
 
-    for name, param in pre_processing_model.named_parameters():
-        print(name, param)
+    #for name, param in pre_processing_model.named_parameters():
+    #    print(name, param)
     #only conv layer weights will be loaded
-    print('before weight load:', pre_processing_model.module.conv1.weight)
+    #print('before weight load:', pre_processing_model.module.conv1.weight)
     pre_processing_model.load_state_dict(state_dict, strict=False)
-    print('after weight load:', pre_processing_model.module.conv1.weight)
-    print('pre_model:', pre_processing_model)
+    #print('after weight load:', pre_processing_model.module.conv1.weight)
+    #print('pre_model:', pre_processing_model)
     #set the conv layer to be untrainable, not necessary
     for name, param in pre_processing_model.named_parameters():
         param.requires_grad = False
