@@ -7,8 +7,50 @@ import t3nsor as t3
 import torch.nn.functional as F
 import pdb
 import torchvision.models as models
-import model_wideresnet
+from model_wideresnet import *
 from t3nsor import TensorTrainBatch
+
+
+class LeNet_partial(nn.Module):
+    def __init__(self):
+        super(LeNet_partial, self).__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+
+    def forward(self, x):
+        out = F.relu(self.conv1(x))
+        out = F.max_pool2d(out, 2)
+        out = F.relu(self.conv2(out))
+        out = F.max_pool2d(out, 2)
+
+        #output shape: [batch_size, 16, 5, 5]
+        #compute cov matrix
+        batch_size = out.shape[0]
+        batch_cov_matrix = torch.matmul(out.view(batch_size, 16, 25), out.view(batch_size, 25, 16))
+
+        return batch_cov_matrix
+
+
+class LeNet(nn.Module):
+    def __init__(self):
+        super(LeNet, self).__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.fc1 = nn.Linear(16*5*5, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 10)
+
+    def forward(self, x):
+        out = F.relu(self.conv1(x))
+        out = F.max_pool2d(out, 2)
+        out = F.relu(self.conv2(out))
+        out = F.max_pool2d(out, 2)
+        out = out.view(out.size(0), -1)
+        out = F.relu(self.fc1(out))
+        out = F.relu(self.fc2(out))
+        out = self.fc3(out)
+        return out
+
 
 class normal_logistic(nn.Module):
     def __init__(self, settings):
@@ -205,16 +247,15 @@ class important_sketching_input_wideresnet(nn.Module):
         super(important_sketching_input_wideresnet, self).__init__()
         self.batch_size = settings.BATCH_SIZE
 
-        self.layer1 = nn.Linear(177, 32*32*3)
+        self.layer1 = nn.Linear(160, 32*32*3)
         #self.layer2 =  models.__dict__['wide_resnet50_2']()
-        self.layer2 = model_wideresnet.WideResNet(settings, depth=28, num_classes=10)
+        self.layer2 = WideResNet(depth=28, num_classes=10)
         #self.fc = nn.Linear(1000,10)
-        self.shape = [self.batch_size, 3, 32, 32]
 
     def forward(self, x):
 
         x = self.layer1(x)
-        x = torch.reshape(x, shape=self.shape)
+        x = torch.reshape(x, [-1, 3, 32, 32])
         x = self.layer2(x)
         #x = self.fc(x)
         return x
