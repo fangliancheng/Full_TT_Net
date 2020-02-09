@@ -1,4 +1,5 @@
 import argparse
+import torch
 from torchvision import datasets, transforms, models
 import my_models
 from model_wideresnet import WideResNet
@@ -77,24 +78,15 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
     #switch to train mode
     model.train()
     print('setting.MODULE_FILE:', settings.MODEL_FILE)
-    #os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-    #Loading a checkpoint for resuming training
-    if settings.MODEL_FILE is not None:
-        check_point = torch.load(settings.MODEL_FILE)
-        state_dict = check_point['state_dict']
-        model.load_state_dict(state_dict)
-        epoch_cur = check_point['epoch']
-    else:
-        epoch_cur = -1
 
     if settings.GPU:
         criterion = nn.CrossEntropyLoss().cuda()
     else:
         criterion = nn.CrossEntropyLoss()
-
     #criterion = nn.MSELoss().cuda()
 
     params_to_update = model.parameters()
+
     if settings.FEATURE_EXTRACT == 'cnn':
         params_to_update = []
         for name, param in model.named_parameters():
@@ -103,6 +95,16 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
 
     #weight_decay set to a big value: 1e-1
     optimizer = torch.optim.SGD(params_to_update, settings.LR, momentum=0.9, weight_decay=1e-3)
+
+    # Loading a checkpoint for resuming training
+    if settings.MODEL_FILE is not None:
+        check_point = torch.load(settings.MODEL_FILE)
+        state_dict = check_point['state_dict']
+        model.load_state_dict(state_dict)
+        epoch_cur = check_point['epoch']
+        optimizer.load_state_dict(check_point['optimizer_state_dict'])
+    else:
+        epoch_cur = -1
 
     def adjust_learning_rate(optimizer, epoch):
         """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
@@ -166,10 +168,10 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
     #             m.module.ip6.weight.tt_cores[core_idx].data = m.module.ip6.weight.tt_cores[core_idx].data.clamp(-1, 1)
     #             m.module.ip6.bias.tt_cores[core_idx].data = m.module.ip6.bias.tt_cores[core_idx].data.clamp(-1, 1)
 
-    def my_loss(other_loss, cri, output, target):
-        loss_classify = cri(output, target)
-        print('loss_classify:', loss_classify, 'cond_loss:', other_loss.sum())
-        return loss_classify + cond_loss.sum()
+    # def my_loss(other_loss, cri, output, target):
+    #     loss_classify = cri(output, target)
+    #     print('loss_classify:', loss_classify, 'cond_loss:', other_loss.sum())
+    #     return loss_classify + cond_loss.sum()
 
     # #Use full dataset to compute sample covariance tensor
     # sample_covariance_tt_core_list = t3.construct_sample_covariance_tensor('full', settings)
@@ -225,7 +227,7 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
 
                 if loss > 10:
                     print('loss explosion!!')
-                    #break
+
                 # compute gradient and do SGD step
                 optimizer.zero_grad()
                 loss.backward()
@@ -274,10 +276,8 @@ def train(model, train_loader, val_loader, dir=None, sample_covariance_tt_core_l
         print(' * TRAIN Prec@1 {top1.avg:.3f} Prec@5 {top5.avg:.3f}'.format(top1=top1, top5=top5))
         torch.save({
             'epoch': epoch,
-            'best_prec1': top1.avg,
             'state_dict': model.state_dict(),
-            #optimizer_state_dict
-            #loss
+            'optimizer_state_dict': optimizer.state_dict(),
         }, os.path.join(dir, 'epoch_%d.pth' % epoch))
 
 
@@ -340,14 +340,10 @@ def validate(model, val_loader, sample_covariance_tt_core_list=None):
 
 
 def main():
-    #print('current GPU:', torch.cuda.current_device())
-    # val_loader = imagenet_loader(settings, 'val')
-    # train_loader = imagenet_loader(settings, 'train', shuffle=True, data_augment=True)
     val_loader = cifar_loader(settings, 'val')
     train_loader = cifar_loader(settings, 'train', shuffle=True, data_augment=True)
 
     if settings.FEATURE_EXTRACT == 'cnn' and not settings.BENCHMARK:
-        #pdb.set_trace()
         def set_parameter_requires_grad(model, feature_extracting):
             if feature_extracting:
                 for param in model.parameters():
@@ -357,7 +353,7 @@ def main():
         set_parameter_requires_grad(model, feature_extracting=True)
         num_ftrs = model.fc.in_features #512
         model.fc = settings.CNN_MODEL(settings)
-        #pdb.set_trace()
+
     elif settings.BENCHMARK:
         def set_parameter_requires_grad(model, feature_extracting):
             if feature_extracting:
@@ -381,16 +377,6 @@ def main():
         model = model.to(device)
         assert(torch.cuda.device_count() > 1)
         #print('model parameter:', dict(model.named_parameters()))
-        #.set_trace()
-
-    #print(model)
-    #model.train()
-    #model = my_models.tt_input_resnet18(settings).cuda()
-    # model = my_models.learnable_tt_wide_resnet(settings).cuda()
-    # print(model)
-    #test cifar10 ---> TT ---> Resnet
-    #model = models.__dict__['resnet18']().cuda()
-    #sample_test(settings,train_loader,val_loader,snapshot_dir)
 
     # Use full dataset to compute sample covariance tensor
     sample_covariance_tt_core_list = t3.construct_sample_covariance_tensor('full', settings)
