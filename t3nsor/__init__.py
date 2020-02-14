@@ -6,7 +6,6 @@ from t3nsor.initializers import matrix_ones
 from t3nsor.initializers import random_matrix
 from t3nsor.initializers import matrix_with_random_cores
 from t3nsor.initializers import tensor_with_random_cores
-from t3nsor.initializers import tensor_with_random_cores_epsilon
 from t3nsor.decompositions import tt_to_ott
 from t3nsor.decompositions import to_tt_tensor
 from t3nsor.decompositions import to_tt_matrix
@@ -27,12 +26,14 @@ from t3nsor.utils import input_to_tt_matrix
 from t3nsor.utils import tt_to_dense
 from t3nsor.utils import construct_sample_covariance_tensor
 from t3nsor.utils import important_sketching
+from t3nsor.utils import arithmetic_idx_seq
 from t3nsor.layers import FTTLinear
 from t3nsor.layers import TTConv
 from t3nsor.layers import TTLinear
 from t3nsor.layers import TTSolver
 from t3nsor.layers import FTT_Solver
 from t3nsor.layers import TTFC
+from t3nsor.layers import exp_machine
 #from t3nsor.layers import qr_like_nn
 #from t3nsor.layers import svd_like_nn
 #from t3nsor.layers import layer_to_tt_tensor
@@ -41,3 +42,5 @@ from t3nsor.layers import core_wise_linear
 from t3nsor.layers import layer_to_tt_tensor_learnable
 from t3nsor.initializers import matrix_zeros
 from t3nsor.initializers import glorot_initializer
+from t3nsor.initializers import tensor_batch_with_random_cores
+from t3nsor.initializers import random_tensor_batch
