@@ -11,6 +11,96 @@ from model_wideresnet import *
 from t3nsor import TensorTrainBatch
 from t3nsor.utils import *
 
+class linear_exp(nn.Module):
+    def __init__(self, settings, num_classes=10):
+        super(linear_exp, self).__init__()
+        self.fc1 = nn.Linear(4096,10)
+        self.exp = t3.exp_machine(settings=settings, weight_channel=num_classes, shape=10*[2])
+        self.fc2 = nn.Linear(10, 10)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = self.exp(x)
+        x = self.fc2(x)
+        #pdb.set_trace()
+        return x
+
+
+class AlexNet(nn.Module):
+    def __init__(self, num_classes=10):
+        super(AlexNet, self).__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2),
+            nn.Conv2d(64, 192, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2),
+            nn.Conv2d(192, 384, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(384, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2),
+        )
+        self.classifier = nn.Sequential(
+            nn.Dropout(),
+            nn.Linear(256*2*2, 4096),
+            nn.ReLU(inplace=True),
+            nn.Dropout(),
+            nn.Linear(4096, 4096),
+            nn.ReLU(inplace=True),
+            nn.Linear(4096, num_classes),
+        )
+        #self.exp_layer = t3.exp_machine(settings=settings, weight_channel=num_classes, shape=10*[2])
+        #self.final_fc = nn.Linear(num_classes, num_classes)
+
+    def forward(self, x):
+        x = self.features(x)
+        x = x.view(x.size(0), 256*2*2)
+        x = self.classifier(x)
+        return x
+
+
+class AlexNet_exp(nn.Module):
+    def __init__(self, settings, num_classes=10):
+        super(AlexNet_exp, self).__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2),
+            nn.Conv2d(64, 192, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2),
+            nn.Conv2d(192, 384, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(384, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2),
+        )
+        #self.avgpool=nn.AdaptiveAvgPool2d((6, 6))
+        self.classifier = nn.Sequential(
+            nn.Dropout(),
+            nn.Linear(256*2*2, 4096),
+            nn.ReLU(inplace=True),
+            nn.Dropout(),
+            nn.Linear(4096, 4096),
+            nn.ReLU(inplace=True),
+            nn.Linear(4096, num_classes),
+        )
+        self.exp_layer = t3.exp_machine(settings=settings, weight_channel=num_classes, shape=10*[2])
+        self.final_fc = nn.Linear(num_classes, num_classes)
+
+    def forward(self, x):
+        x = self.features(x)
+        x = x.view(x.size(0), 256*2*2)
+        x = self.classifier(x)
+        x = self.exp_layer(x)
+        x = self.final_fc(x)
+        return x
 
 class all_interaction_linear(nn.Module):
     def __init__(self, settings, weight_channel=1):
@@ -19,14 +109,15 @@ class all_interaction_linear(nn.Module):
     def forward(self, x):
         out = self.exp(x)
 
-        
+
 class all_interaction(nn.Module):
-    def __init__(self, settings, weight_channel=12):
+    def __init__(self, settings, weight_channel=10):
         super(all_interaction, self).__init__()
         self.conv1 = nn.Conv2d(3, 6, 5)
         self.conv2 = nn.Conv2d(6, 16, 5)
-        self.exp_interact = t3.exp_machine(settings=settings, weight_channel=weight_channel)
+        self.exp_interact = t3.exp_machine(settings=settings, weight_channel=weight_channel, shape=10*[2])
         self.fc1 = nn.Linear(weight_channel, 120)
+        self.fc11 = nn.Linear(400, 120)
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, 10)
 
@@ -35,10 +126,11 @@ class all_interaction(nn.Module):
         out = F.max_pool2d(out, 2)
         out = F.relu(self.conv2(out))
         out = F.max_pool2d(out, 2)
-        out = self.exp_interact(out)
-        out = F.relu(self.fc1(out))
+        out = out.view(out.size(0), -1)
+        out = F.relu(self.fc11(out))
         out = F.relu(self.fc2(out))
         out = self.fc3(out)
+        out = self.exp_interact(out)
         return out
 
 
