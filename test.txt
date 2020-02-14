@@ -15,3 +15,5 @@ For symmetric positive definite matrix, SVD and Eigen-decomp coincide.
 For symmetric matrix, singular vector/values and Eigen-vector/value coincide up to sign(+-1)
 Ref: https://math.stackexchange.com/questions/546112/recovering-eigenvectors-from-svd
 
+structured high dimensional tensor can be directly decompose in TT format
+
