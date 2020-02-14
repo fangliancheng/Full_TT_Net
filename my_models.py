@@ -9,6 +9,71 @@ import pdb
 import torchvision.models as models
 from model_wideresnet import *
 from t3nsor import TensorTrainBatch
+from t3nsor.utils import *
+
+
+class all_interaction_linear(nn.Module):
+    def __init__(self, settings, weight_channel=1):
+        super(all_interaction_linear, self).__init__()
+        self.exp = t3.exp_machine(settings=settings, weight_channel=weight_channel)
+    def forward(self, x):
+        out = self.exp(x)
+
+        
+class all_interaction(nn.Module):
+    def __init__(self, settings, weight_channel=12):
+        super(all_interaction, self).__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.exp_interact = t3.exp_machine(settings=settings, weight_channel=weight_channel)
+        self.fc1 = nn.Linear(weight_channel, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 10)
+
+    def forward(self, x):
+        out = F.relu(self.conv1(x))
+        out = F.max_pool2d(out, 2)
+        out = F.relu(self.conv2(out))
+        out = F.max_pool2d(out, 2)
+        out = self.exp_interact(out)
+        out = F.relu(self.fc1(out))
+        out = F.relu(self.fc2(out))
+        out = self.fc3(out)
+        return out
+
+
+class end_to_end(nn.Module):
+    def __init__(self, settings, important_directions):
+        super(end_to_end, self).__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.conv2 = nn.Conv2d(6, 15, 5)
+        self.layer = important_sketching_input_wideresnet(settings)
+        self.important_directions = important_directions
+        self.settings = settings
+
+    def forward(self, x):
+        out = F.relu(self.conv1(x))
+        out = F.max_pool2d(out, 2)
+        out = F.relu(self.conv2(out))
+        out = F.max_pool2d(out, 2)
+
+        #output shape: [batch_size, 15, 5, 5]
+        #compute cov matrix
+        beta = 0.3
+        batch_size = out.shape[0]
+        mean = torch.unsqueeze(torch.sum(out.view(batch_size, 15, 25), 2), dim=2)
+        assert(mean.shape[0] == batch_size and mean.shape[1] == 15)
+
+        batch_cov_matrix = 1/25 * torch.matmul(out.view(batch_size, 15, 25) - torch.cat(25*[mean], dim=2), (out.view(batch_size, 15, 25)-torch.cat(25*[mean], dim=2)).view(batch_size, 25, 15))
+        batch_cov_matrix += beta**2*mean.matmul(mean.transpose(1, 2))
+        upper_part = torch.cat([batch_cov_matrix, beta*mean], dim=2)
+        lower_part = torch.cat([beta*mean.transpose(1, 2), torch.ones(batch_size, 1, 1).to(mean.device)], dim=2)
+        final = torch.cat([upper_part, lower_part], dim=1)
+        #print('final shape:', final.shape)
+        #pdb.set_trace()
+        projected = important_sketching(final, self.important_directions, self.settings)
+        out = self.layer(projected)
+        return out
 
 
 class LeNet_partial(nn.Module):

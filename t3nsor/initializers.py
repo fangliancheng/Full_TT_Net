@@ -68,11 +68,7 @@ def _validate_input_parameters(is_tensor, shape, **params):
                                  '1 or %d, got %d' % (shape[0].size + 1, tt_rank.size))
 
 
-def tensor_with_random_cores_epsilon(shape,tt_rank,epsilon):
-    return tensor_with_random_cores(shape,tt_rank=tt_rank,mean=epsilon)
-
-
-def tensor_with_random_cores(shape, tt_rank=2, mean=0., stddev=1.,dtype=torch.float32):
+def tensor_with_random_cores(shape, tt_rank=2, mean=0., stddev=1., dtype=torch.float32):
     """Generate a TT-tensor of the given shape with N(mean, stddev^2) cores.
     Args:
       shape: array representing the shape of the future tensor.
@@ -103,9 +99,137 @@ def tensor_with_random_cores(shape, tt_rank=2, mean=0., stddev=1.,dtype=torch.fl
 
     for i in range(num_dims):
         curr_core_shape = (tt_rank[i], shape[i], tt_rank[i + 1])
-        tt_cores[i] = torch.randn(curr_core_shape,dtype=dtype)*stddev + mean
+        tt_cores[i] = torch.randn(curr_core_shape, dtype=dtype)*stddev + mean
 
     return TensorTrain(tt_cores, shape, tt_rank)
+
+
+def tensor_batch_with_random_cores(shape, tt_rank=2, batch_size=1, mean=0., stddev=1.):
+    """Generate a batch of TT-tensors of given shape with N(mean, stddev^2) cores.
+    Args:
+      shape: array representing the shape of the future tensor.
+      tt_rank: a number or a (d+1)-element array with ranks.
+      batch_size: an integer.
+      mean: a number, the mean of the normal distribution used for
+        initializing TT-cores.
+      stddev: a number, the standard deviation of the normal distribution used
+        for initializing TT-cores.
+      name: string, name of the Op.
+    Returns:
+      TensorTrainBatch containing TT-tensors
+    """
+
+    # TODO: support shape and tt_ranks as TensorShape?.
+    # TODO: support None as a dimension.
+    shape = np.array(shape)
+    tt_rank = np.array(tt_rank)
+    _validate_input_parameters(is_tensor=True, shape=shape, tt_rank=tt_rank)
+    num_dims = shape.size
+    if tt_rank.size == 1:
+        tt_rank = tt_rank * np.ones(num_dims - 1)
+        tt_rank = np.insert(tt_rank, 0, 1)
+        tt_rank = np.append(tt_rank, 1)
+    tt_rank = tt_rank.astype(int)
+    tt_cores = [None] * num_dims
+
+    for i in range(num_dims):
+        curr_core_shape = (batch_size, tt_rank[i], shape[i], tt_rank[i + 1])
+        tt_cores[i] = torch.randn(curr_core_shape)*stddev + mean
+
+    return TensorTrainBatch(tt_cores, shape, tt_rank, batch_size)
+
+
+def random_tensor(shape, tt_rank=2, mean=0., stddev=1.):
+    """Generate a random TT-tensor of the given shape with given mean and stddev.
+    Entries of the generated tensor (in the full format) will be iid and satisfy
+    E[x_{i1i2..id}] = mean, Var[x_{i1i2..id}] = stddev^2, but the distribution is
+    in fact not Gaussian (but is close for large tensors).
+    In the current implementation only mean 0 is supported. To get
+    a random_tensor with specified mean but tt_rank greater by 1 you can
+    call
+    x = t3f.random_tensor(shape, tt_rank, stddev=stddev)
+    x = mean * t3f.ones_like(x) + x
+    Args:
+      shape: array representing the shape of the future tensor.
+      tt_rank: a number or a (d+1)-element array with the desired ranks.
+      mean: a number, the desired mean for the distribution of entries.
+      stddev: a number, the desired standard deviation for the distribution of
+        entries.
+      dtype: [tf.float32] dtype of the resulting tensor.
+      name: string, name of the Op.
+    Returns:
+      TensorTrain containing a TT-tensor
+    """
+    shape = np.array(shape)
+    tt_rank = np.array(tt_rank)
+    _validate_input_parameters(is_tensor=True, shape=shape, tt_rank=tt_rank)
+
+    num_dims = shape.size
+    if tt_rank.size == 1:
+        tt_rank = tt_rank * np.ones(num_dims - 1)
+        tt_rank = np.insert(tt_rank, 0, 1)
+        tt_rank = np.append(tt_rank, 1)
+
+    tt_rank = tt_rank.astype(int)
+
+    # Empirically entries of a TT tensor with cores initialized from N(0, 1)
+    # will have variances np.prod(tt_rank) and mean 0.
+    # We scale each TT-core to obtain the desired stddev
+
+    cr_exponent = -1.0 / (2 * num_dims)
+    var = np.prod(tt_rank ** cr_exponent)
+    core_stddev = stddev ** (1.0 / num_dims) * var
+
+    tt = tensor_with_random_cores(shape, tt_rank=tt_rank, stddev=core_stddev)
+    if np.abs(mean) < 1e-8:
+        return tt
+    else:
+        raise NotImplementedError('non-zero mean is not supported yet')
+
+
+def random_tensor_batch(shape, tt_rank=2, batch_size=1, mean=0., stddev=1.):
+    """Generate a batch of TT-tensors with given shape, mean and stddev.
+    Entries of the generated tensors (in the full format) will be iid and satisfy
+    E[x_{i1i2..id}] = mean, Var[x_{i1i2..id}] = stddev^2, but the distribution is
+    in fact not Gaussian (but is close for large tensors).
+    In the current implementation only mean 0 is supported. To get
+    a random_tensor_batch with specified mean but tt_rank greater by 1 you can
+    call
+    x = t3f.random_tensor_batch(shape, tt_rank, batch_size=bs, stddev=stddev)
+    x = mean * t3f.ones_like(x) + x
+    Args:
+      shape: array representing the shape of the future tensor.
+      tt_rank: a number or a (d+1)-element array with ranks.
+      batch_size: an integer.
+      mean: a number, the desired mean for the distribution of entries.
+      stddev: a number, the desired standard deviation for the distribution of
+        entries.
+      dtype: [tf.float32] dtype of the resulting tensor.
+      name: string, name of the Op.
+    Returns:
+      TensorTrainBatch containing TT-tensors.
+    """
+    # TODO: support shape and tt_ranks as TensorShape?.
+    # TODO: support None as a dimension.
+    shape = np.array(shape)
+    tt_rank = np.array(tt_rank)
+    _validate_input_parameters(is_tensor=True, shape=shape, tt_rank=tt_rank, batch_size=batch_size)
+    num_dims = shape.size
+    if tt_rank.size == 1:
+        tt_rank = tt_rank * np.ones(num_dims - 1)
+        tt_rank = np.insert(tt_rank, 0, 1)
+        tt_rank = np.append(tt_rank, 1)
+    tt_rank = tt_rank.astype(int)
+
+    cr_exponent = -1.0 / (2 * num_dims)
+    var = np.prod(tt_rank ** cr_exponent)
+    cr_stddev = stddev ** (1.0 / num_dims) * var
+
+    tt = tensor_batch_with_random_cores(shape, tt_rank=tt_rank, stddev=cr_stddev, batch_size=batch_size)
+    if np.abs(mean) < 1e-8:
+        return tt
+    else:
+        raise NotImplementedError('non-zero mean is not supported yet')
 
 
 def tensor_ones(shape, dtype=torch.float32):
@@ -355,7 +479,7 @@ def glorot_initializer(shape, tt_rank=4, dtype=torch.float32):
     n_in = np.prod(shape[0])
     n_out = np.prod(shape[1])
     lamb = 2.0 / (n_in + n_out)
-    return random_matrix(shape, tt_rank=tt_rank, stddev=np.sqrt(lamb),dtype=dtype)
+    return random_matrix(shape, tt_rank=tt_rank, stddev=np.sqrt(lamb), dtype=dtype)
 
 
 def matrix_batch_with_random_cores(shape, batch_size=1, tt_rank=2, mean=0., stddev=1.,

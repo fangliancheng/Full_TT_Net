@@ -124,7 +124,7 @@ def construct_sample_covariance_tensor(sample_mode, settings, mini_batch_input=N
 #apply importance sketching to perform dimension reduction
 #return list of dimension-reduced covariates, *have same dimension as TT cores*
 def important_sketching(mini_batch, cov_tt_cores, settings):
-    mini_batch = mini_batch.view(settings.BATCH_SIZE, 4, 4, 4, 4)
+    mini_batch = mini_batch.view(mini_batch.shape[0], 4, 4, 4, 4)
     # assert(cov_tt_cores[0].shape[1] == 3)
     # assert(cov_tt_cores[1].shape[0] == 3)
     # assert(cov_tt_cores[2].shape[0] == 3)
@@ -562,3 +562,12 @@ def get_element_from_batch(tt_batch, idx):
     # else:
     #     print('idx normal:', idx)
     return TensorTrain(tt_cores)
+
+
+def arithmetic_idx_seq(init, diff, num):
+    seq = []
+    count = init
+    for i in range(num):
+        seq.append(count)
+        count += diff
+    return seq

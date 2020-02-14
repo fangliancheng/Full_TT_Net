@@ -3,7 +3,7 @@ import numpy as np
 import torch.nn as nn
 import t3nsor as t3
 import math
-from t3nsor.utils import cayley
+from t3nsor.utils import *
 from t3nsor import TensorTrainBatch
 from t3nsor import TensorTrain
 from t3nsor.utils import svd_fix
@@ -39,12 +39,80 @@ import pdb
 #         elif x.shape[1] == 14:
 #             x = self.fc2(x)
 #         else:
-#             print('dim error!')
+#             print('dim ex_otherrror!')
 #         x = F.relu(x)
 #         y = torch.mm(x.permute(1, 0), x)
 #         x_orth = self.fc_orth(x)
 #         x_other = self.fc_other(y)
-#         return x_orth, x_other
+#         return x_orth,
+
+
+class exp_machine(nn.Module):
+    def __init__(self, settings, weight_channel=16, tt_rank=2, shape=16*5*5*[2], init=None):
+        super(exp_machine, self).__init__()
+        self.shape = shape
+        self.tt_rank = tt_rank
+        self.num_channel = weight_channel
+        self.batch_size = settings.BATCH_SIZE
+        if init is None:
+            #we have two way to initialize TT format weight
+            tt_weight_batch = t3.random_tensor_batch(shape, tt_rank=tt_rank, batch_size=weight_channel)
+        #self.weight is a list of tt_cores, first 400 tt_cores make up the first TT_weight channel, so on...
+        #TODO:maybe create dupicated weights in self.parameter_weight
+        self.weight = self.weight_to_parameter(tt_weight_batch)
+
+    def weight_to_parameter(self, init_weight_batch):
+        weight_list = nn.ParameterList([])
+
+        for tt_idx in range(init_weight_batch.batch_size):
+            for weight_core in get_element_from_batch(init_weight_batch, tt_idx).tt_cores:
+                """Can only append nn.Parameter to nn.ParameterList"""
+                weight_core = nn.Parameter(weight_core)
+                weight_list.append(weight_core)
+
+        """We must add this assignment to add the parameter to model"""
+        """
+        1.Construct nn.Parameterlist 
+        2.Move weights to nn.Parameters 
+        3.Append them to ParameterList 
+        4.Assign Parameterlist to something
+        """
+        self.parameter_weight = weight_list
+        return weight_list
+
+    def forward(self, x):
+        #input_tt_core_list = []
+        #pdb.set_trace()
+        #input shape: [256, 16, 5, 5]
+        size = [x.shape[i+1] for i in range(len(x.shape)-1)]
+        #assert(size == x.shape[0])
+        # for core_idx in range(np.prod(size)):
+        #     input_tt_core_list.append(torch.Tensor([1, x[core_idx]]).view(2, 1))
+
+        #defined in utils.py
+        # def arithmetic_idx_seq(init, diff, num):
+        #     seq = []
+        #     count = init
+        #     for i in range(num):
+        #         seq.append(count)
+        #         count += diff
+        #     return seq
+        for core_idx in range(np.prod(size)):
+            temp_list = []
+            for idx in t3.arithmetic_idx_seq(core_idx, np.prod(size), self.num_channel):
+                temp_list.append(torch.unsqueeze(self.weight[idx], dim=0))
+            curr_batch_weight_core = torch.cat(temp_list, dim=0)
+            #x shape: [256, 16, 5, 5]
+            #curr_batch_weight_core shape: [40, r, 2, r]
+            #x.view(-1,256)[idx] will be the idx row of matrix of shape [400,256]
+            Ak = curr_batch_weight_core[:, :, 0, :] + torch.einsum('i,obk->iobk', x.view(-1, self.batch_size)[core_idx], curr_batch_weight_core[:, :, 1, :])
+
+            if core_idx == 0:
+                temp = Ak
+            else:
+                temp = torch.einsum('bcij,bcjk->bcik', temp, Ak)
+        #output shape: [256, 40, 1, 1]
+        return torch.reshape(temp, [self.batch_size, -1])
 
 
 # This is intended to be an anolog to standard FC layer
@@ -414,7 +482,6 @@ class TTConv(nn.Module):
             ttbatch_list.append(
                 TensorTrainBatch(re_organized_splited_list[i * self.ndims:i * self.ndims + self.ndims:1],
                                  convert_to_tensors=False))
-        # pdb.set_trace()
         return ttbatch_list
 
 

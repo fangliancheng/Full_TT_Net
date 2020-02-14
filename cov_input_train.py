@@ -32,7 +32,7 @@ settings = edict.EasyDict({
     "MODEL_FILE": None,
     "FINETUNE": False,
     "WORKERS": 12,
-    "BATCH_SIZE": 256,
+    "BATCH_SIZE": 128,
     "PRINT_FEQ": 10,
     "LR": 0.1,
     "EPOCHS": 90,
@@ -135,7 +135,7 @@ def train(model, train_loader, dir=None, sample_covariance_tt_core_list=None, pr
         }, os.path.join(dir, 'epoch_%d.pth' % epoch))
 
 
-def val(model, val_loader, epoch, sample_covariance_tt_core_list=None, pre_model=None):
+def val(model, val_loader, sample_covariance_tt_core_list=None, pre_model=None):
     if settings.MODEL_FILE is not None:
         check_point = torch.load(settings.MODEL_FILE)
         # state_dict = {str.replace(k, 'module.', ''): v for k, v in check_point[
@@ -210,40 +210,48 @@ def main():
     #     val(pre_processing_model, val_loader, epoch)
 
     ###########################################################################################################################
-    lenet_model_file = "result/pytorch_{}_{}_{}/snapshot/epoch_{}.pth".format('LeNet', 'channel_15', args.dataset, 29)
-    check_point = torch.load(lenet_model_file)
-    state_dict = check_point['state_dict']
+    #lenet_model_file = "result/pytorch_{}_{}_{}/snapshot/epoch_{}.pth".format('LeNet', 'channel_15', args.dataset, 29)
+    #check_point = torch.load(lenet_model_file)
+    #state_dict = check_point['state_dict']
     #for name in state_dict:
     #    print(name)
-    pre_processing_model = nn.DataParallel(LeNet_partial()).cuda()
+    #pre_processing_model = nn.DataParallel(LeNet_partial()).cuda()
 
     #for name, param in pre_processing_model.named_parameters():
     #    print(name, param)
     #only conv layer weights will be loaded
     #print('before weight load:', pre_processing_model.module.conv1.weight)
-    pre_processing_model.load_state_dict(state_dict, strict=False)
+
+    #pre_processing_model.load_state_dict(state_dict, strict=False)
+
     #print('after weight load:', pre_processing_model.module.conv1.weight)
     #print('pre_model:', pre_processing_model)
     #set the conv layer to be untrainable, not necessary
-    for name, param in pre_processing_model.named_parameters():
-        param.requires_grad = False
+    #for name, param in pre_processing_model.named_parameters():
+    #    param.requires_grad = False
 
     # Use full dataset to compute sample covariance tensor
-    sample_covariance_tt_core_list = t3.construct_sample_covariance_tensor('full', settings, pre_model=pre_processing_model)
+    #sample_covariance_tt_core_list = t3.construct_sample_covariance_tensor('full', settings, pre_model=pre_processing_model)
 
     #trainable network, should be TT-Net once backward issue is fixed
-    model = important_sketching_input_wideresnet(settings)
+    #model = important_sketching_input_wideresnet(settings)
+    #model = end_to_end(settings, sample_covariance_tt_core_list)
+    model = all_interaction(settings=settings)
     print('classifier network:', model)
 
     if settings.GPU:
-        model = nn.DataParallel(model).cuda()
+        #model = nn.DataParallel(model).cuda()
+        model = model.cuda()
 
-    settings.OUTPUT_FOLDER = "result/pytorch_{}_{}_{}".format('LeNet_Cov_WideResNet', args.mark, args.dataset)
+    settings.OUTPUT_FOLDER = "result/pytorch_{}_{}_{}".format('LeNet_with_exp_inter', 'channel_400', args.dataset)
     snapshot_dir = dir(os.path.join(settings.OUTPUT_FOLDER, 'snapshot'))
-    train(model, train_loader, snapshot_dir, sample_covariance_tt_core_list, pre_model=pre_processing_model)
+    #train(model, train_loader, snapshot_dir, sample_covariance_tt_core_list, pre_model=pre_processing_model)
+    #train(model, train_loader, snapshot_dir, sample_covariance_tt_core_list)
+    train(model, train_loader, snapshot_dir)
     for epoch in range(settings.EPOCHS - 10, settings.EPOCHS):
-        settings.MODEL_FILE = "result/pytorch_{}_{}_{}/snapshot/epoch_{}.pth".format('LeNet_Cov_WideResNet', args.mark, args.dataset, epoch)
-        val(model, val_loader, epoch, sample_covariance_tt_core_list, pre_processing_model)
+        settings.MODEL_FILE = "result/pytorch_{}_{}_{}/snapshot/epoch_{}.pth".format('LeNet_with_exp_inter', 'channel_400', args.dataset, epoch)
+        #val(model, val_loader, epoch, sample_covariance_tt_core_list, pre_processing_model)
+        val(model, val_loader)
 
 
 if __name__ == '__main__':
